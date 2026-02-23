@@ -25,6 +25,7 @@ chmod +x orchestrator.sh
 - SSH key-only (`Public/Private Key Pfad`)
 - Optionale Module (auch leer möglich)
 - Optionale Apps `docker` und `nginx` (auch leer möglich)
+- `qemu-guest-agent` wird immer installiert (nicht mehr als optionales Modul)
 
 ## Benötigte Dateien im Repo
 
@@ -52,4 +53,5 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 ## Hinweise
 
 - Während der Provisionierung gibt es laufend Konsolen-Feedback (z. B. Warten auf DHCP-IP, Ping/SSH-Checks).
+- Bei DHCP wird kurz versucht, die IP per QGA zu lesen; wenn das nicht klappt, fragt der Wizard die VM-IP manuell ab.
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).

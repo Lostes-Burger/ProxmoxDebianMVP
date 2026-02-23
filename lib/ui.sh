@@ -229,7 +229,6 @@ choose_modules() {
     "unattended_upgrades" "Automatische Updates" OFF \
     "ufw" "Firewall" OFF \
     "fail2ban" "Bruteforce-Schutz" OFF \
-    "qemu_guest_agent" "QEMU Guest Agent" OFF \
     "sysctl_hardening" "Kernel Hardening" OFF \
     3>&1 1>&2 2>&3); then
     die "Vom Benutzer abgebrochen."

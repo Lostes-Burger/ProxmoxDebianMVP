@@ -24,11 +24,14 @@ bootstrap_vm() {
   remote_cmd="if command -v sudo >/dev/null 2>&1; then SUDO='sudo'; else SUDO=''; fi; \
 \$SUDO apt-get update -y; \
 \$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-apt qemu-guest-agent; \
-\$SUDO systemctl enable --now qemu-guest-agent || true"
+\$SUDO systemctl enable --now qemu-guest-agent; \
+\$SUDO systemctl is-active --quiet qemu-guest-agent"
 
   if ! ssh "${ssh_opts[@]}" "${user}@${ip}" "$remote_cmd"; then
-    die "Bootstrap der VM fehlgeschlagen."
+    die "Bootstrap der VM fehlgeschlagen (python3/qemu-guest-agent konnte nicht eingerichtet werden)."
   fi
+
+  log_info "qemu-guest-agent ist installiert und aktiv."
 }
 
 run_ansible() {
