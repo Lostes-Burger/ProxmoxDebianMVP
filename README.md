@@ -58,6 +58,7 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 ## Hinweise
 
 - Während der Provisionierung gibt es laufend Konsolen-Feedback (z. B. Warten auf DHCP-IP, Ping/SSH-Checks).
+- Der SSH-Wait prüft den echten Login mit dem gewählten Cloud-Init-Benutzer (nicht `root`).
 - Bei DHCP wird die IP automatisch über `qemu-guest-agent` ermittelt (kein manueller IP-Prompt mehr).
 - VM-Disk und Cloud-Init-Snippets können auf unterschiedlichen Storages liegen (z. B. VM auf `bigdata`, Snippets auf `local`).
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).

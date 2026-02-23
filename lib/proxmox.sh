@@ -98,6 +98,10 @@ wait_for_ssh() {
   local port="$2"
   local timeout="$3"
   local interval="$4"
+  local user="$5"
+  local auth_mode="$6"
+  local key_path="$7"
+  local password="$8"
 
   if [[ "$ip" =~ ^127\. ]]; then
     die "Ungültige Ziel-IP '$ip' (Loopback). DHCP/QGA-Ermittlung ist fehlerhaft."
@@ -106,14 +110,40 @@ wait_for_ssh() {
   local deadline=$((SECONDS + timeout))
   local attempt=1
   while (( SECONDS < deadline )); do
-    log_info "Warte auf VM Netzwerk/SSH (${ip}:${port}) - Versuch ${attempt}"
-    if ping -c1 -W1 "$ip" >/dev/null 2>&1 && nc -z -w1 "$ip" "$port" >/dev/null 2>&1; then
-      log_info "SSH erreichbar auf $ip:$port"
+    log_info "Warte auf SSH-Login (${user}@${ip}:${port}, mode=${auth_mode}) - Versuch ${attempt}"
+
+    local rc=1
+    if [[ "$auth_mode" == "key" ]]; then
+      if [[ -f "$key_path" ]]; then
+        ssh -o BatchMode=yes \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=5 \
+          -i "$key_path" \
+          -p "$port" \
+          "${user}@${ip}" "true" >/dev/null 2>&1 || rc=$?
+      fi
+    else
+      if [[ -n "$password" ]]; then
+        sshpass -p "$password" ssh \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o ConnectTimeout=5 \
+          -o PreferredAuthentications=password \
+          -o PubkeyAuthentication=no \
+          -p "$port" \
+          "${user}@${ip}" "true" >/dev/null 2>&1 || rc=$?
+      fi
+    fi
+
+    if [[ $rc -eq 0 ]]; then
+      log_info "SSH-Login erfolgreich: ${user}@${ip}:${port}"
       return 0
     fi
+
     attempt=$((attempt + 1))
     sleep "$interval"
   done
 
-  die "SSH Timeout nach ${timeout}s auf ${ip}:${port}."
+  die "SSH Timeout nach ${timeout}s auf ${user}@${ip}:${port} (mode=${auth_mode})."
 }

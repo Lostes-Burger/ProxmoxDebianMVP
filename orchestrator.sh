@@ -42,7 +42,7 @@ main() {
 
   local target_ip
   target_ip="$(resolve_vm_ip "$VMID" "$IP_MODE" "$IP_CIDR")"
-  wait_for_ssh "$target_ip" "$SSH_PORT" 300 3
+  wait_for_ssh "$target_ip" "$SSH_PORT" 300 3 "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PRIVATE_KEY_PATH" "$CI_PASSWORD"
 
   bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PRIVATE_KEY_PATH" "$CI_PASSWORD"
 
