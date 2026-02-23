@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib/ui.sh
+source "$SCRIPT_DIR/lib/ui.sh"
+# shellcheck source=lib/catalog.sh
+source "$SCRIPT_DIR/lib/catalog.sh"
+# shellcheck source=lib/proxmox.sh
+source "$SCRIPT_DIR/lib/proxmox.sh"
+# shellcheck source=lib/cloudinit.sh
+source "$SCRIPT_DIR/lib/cloudinit.sh"
+# shellcheck source=lib/ansible.sh
+source "$SCRIPT_DIR/lib/ansible.sh"
+
+main() {
+  init_logging
+  require_root
+  check_dependencies
+
+  print_header
+
+  local config_file
+  config_file="$(mktemp /tmp/proxmox-orchestrator-config-XXXX.env)"
+  trap 'rm -f "$config_file"' EXIT
+
+  collect_wizard_config "$config_file"
+  # shellcheck disable=SC1090
+  source "$config_file"
+
+  if [[ -n "${CATALOG_REPO_URL:-}" ]]; then
+    sync_catalog_repo "$CATALOG_REPO_URL" "${CATALOG_BRANCH:-main}" "$SCRIPT_DIR/catalog"
+  else
+    log_info "Kein Catalog-Repo konfiguriert, nutze lokale Rollen unter ansible/roles/apps"
+  fi
+
+  local image_path
+  image_path="$(ensure_debian13_image "${IMAGE_STORAGE}")"
+
+  create_vm \
+    "$VMID" "$VM_NAME" "$VM_CORES" "$VM_RAM" "$VM_DISK_GB" "$VM_STORAGE" "$VM_BRIDGE" "$image_path"
+
+  configure_cloud_init \
+    "$VMID" "$VM_STORAGE" "$CI_USER" "$SSH_PUBKEY_PATH" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
+
+  start_vm "$VMID"
+
+  local target_ip
+  target_ip="$(resolve_vm_ip "$VMID" "$IP_MODE" "$IP_CIDR")"
+  wait_for_ssh "$target_ip" "$SSH_PORT" 120 3
+
+  bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_PRIVATE_KEY_PATH"
+
+  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_PRIVATE_KEY_PATH" "$SELECTED_APPS"
+
+  whiptail --title "Fertig" --msgbox "Provisionierung abgeschlossen.\n\nVM: ${VM_NAME} (${VMID})\nIP: ${target_ip}" 12 70
+  log_info "Provisionierung erfolgreich abgeschlossen"
+}
+
+main "$@"

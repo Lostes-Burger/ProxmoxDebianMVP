@@ -1,0 +1,17 @@
+---
+- name: Provision Debian VM
+  hosts: targets
+  become: true
+
+  tasks:
+    - name: Validate selected apps
+      ansible.builtin.assert:
+        that:
+          - item in ['docker', 'nginx']
+        fail_msg: "Unbekannte App ausgewählt: {{ item }}"
+      loop: "{{ apps_selected | default([]) }}"
+
+    - name: Run selected app roles
+      ansible.builtin.include_role:
+        name: "apps/{{ item }}"
+      loop: "{{ apps_selected | default([]) }}"
