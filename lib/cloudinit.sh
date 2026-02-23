@@ -35,6 +35,9 @@ configure_cloud_init_userdata() {
   local vmid="$1"
   local snippets_storage="$2"
   local ssh_auth_mode="$3"
+  local ci_user="$4"
+  local ssh_pubkey_path="$5"
+  local ci_password="$6"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
   if ! storage_has_content_type "$snippets_storage" "snippets"; then
@@ -46,15 +49,54 @@ configure_cloud_init_userdata() {
   snippet_path="$(pvesm path "$snippet_volid" 2>/dev/null || true)"
   [[ -n "$snippet_path" ]] || die "Snippet-Pfad konnte nicht aufgelöst werden: $snippet_volid"
 
+  local user_block=""
+  local auth_block=""
+  if [[ "$ssh_auth_mode" == "key" ]]; then
+    [[ -s "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden oder leer: $ssh_pubkey_path"
+    local ssh_key
+    ssh_key="$(tr -d '\r\n' <"$ssh_pubkey_path")"
+    [[ -n "$ssh_key" ]] || die "Public Key ist leer: $ssh_pubkey_path"
+
+    user_block=$(cat <<EOT
+users:
+  - name: ${ci_user}
+    shell: /bin/bash
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ssh_key}
+EOT
+)
+    auth_block="ssh_pwauth: false"
+  else
+    [[ -n "$ci_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
+    user_block=$(cat <<EOT
+users:
+  - name: ${ci_user}
+    shell: /bin/bash
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+chpasswd:
+  list: |
+    ${ci_user}:${ci_password}
+  expire: false
+EOT
+)
+    auth_block="ssh_pwauth: true"
+  fi
+
   mkdir -p "$(dirname "$snippet_path")"
   cat >"$snippet_path" <<EOT
 #cloud-config
 package_update: true
+${auth_block}
 packages:
   - python3
   - python3-apt
   - qemu-guest-agent
-$( [[ "$ssh_auth_mode" == "password" ]] && echo "ssh_pwauth: true" )
+${user_block}
 runcmd:
   - systemctl enable --now qemu-guest-agent
 EOT
@@ -81,16 +123,8 @@ configure_cloud_init() {
     ipconfig="ip=${ip_cidr},gw=${gateway}"
   fi
 
-  qm set "$vmid" --ciuser "$ci_user" >/dev/null
-  if [[ "$ssh_auth_mode" == "key" ]]; then
-    [[ -s "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden oder leer: $ssh_pubkey_path"
-    qm set "$vmid" --sshkeys "$ssh_pubkey_path" >/dev/null
-  else
-    [[ -n "$ci_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
-    qm set "$vmid" --cipassword "$ci_password" >/dev/null
-  fi
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode"
+  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode" "$ci_user" "$ssh_pubkey_path" "$ci_password"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null

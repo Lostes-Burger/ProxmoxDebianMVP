@@ -26,6 +26,7 @@ chmod +x orchestrator.sh
 - SSH-Login:
   - Key-Modus mit `Public/Private Key`
   - Passwort-Modus, wenn der Public-Key-Pfad leer ist oder die Public-Key-Datei leer ist
+  - Login erfolgt mit dem gewählten Cloud-Init-Benutzer (z. B. `debian`), nicht mit `root`
 - Optionale Module (auch leer möglich)
 - Optionale Apps `docker` und `nginx` (auch leer möglich)
 - `qemu-guest-agent` wird immer installiert (nicht mehr als optionales Modul)
