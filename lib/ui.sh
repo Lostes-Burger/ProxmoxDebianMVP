@@ -155,6 +155,7 @@ storage_has_content_type() {
   local wanted="$2"
 
   awk -v s="$storage" -v w="$wanted" '
+    BEGIN { found=0 }
     $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs):$/ && $2 == s { in_block=1; next }
     $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs):$/ { in_block=0 }
     in_block && $1 == "content" {
@@ -163,10 +164,18 @@ storage_has_content_type() {
       gsub(/[[:space:]]/, "", content)
       gsub(/,/, " ", content)
       n=split(content, a, " ")
-      for (i=1; i<=n; i++) if (a[i] == w) { print "yes"; exit 0 }
+      for (i=1; i<=n; i++) {
+        if (a[i] == w) {
+          found=1
+          exit
+        }
+      }
+      exit
+    }
+    END {
+      if (found) exit 0
       exit 1
     }
-    END { exit 1 }
   ' /etc/pve/storage.cfg >/dev/null 2>&1
 }
 
