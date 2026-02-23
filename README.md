@@ -56,6 +56,10 @@ Optional:
 
 Wenn etwas fehlt, bricht das Tool mit klarer Meldung ab.
 
+Fehlende installierbare Pakete werden im Wizard erkannt. Du kannst dann wählen:
+- automatisch installieren
+- oder Setup abbrechen
+
 ## Hinweise
 
 - Externer App-Catalog ist optional; für den MVP werden lokale Rollen genutzt.

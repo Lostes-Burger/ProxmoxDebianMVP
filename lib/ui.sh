@@ -34,20 +34,88 @@ require_root() {
   fi
 }
 
-check_dependencies() {
-  local deps=(whiptail qm pvesm curl git jq ansible-playbook ssh nc ping)
-  local missing=()
-  local dep
+ask_yes_no() {
+  local title="$1"
+  local message="$2"
 
-  for dep in "${deps[@]}"; do
+  if command -v whiptail >/dev/null 2>&1; then
+    whiptail --title "$title" --yesno "$message" 14 80
+    return $?
+  fi
+
+  printf "%s\n" "$message"
+  printf "Fortfahren? [y/N]: "
+  read -r answer
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
+install_missing_packages() {
+  local packages=("$@")
+
+  log_info "Installiere fehlende Pakete: ${packages[*]}"
+  if ! apt-get update -y; then
+    die "apt-get update ist fehlgeschlagen."
+  fi
+
+  if ! DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"; then
+    die "Automatische Paketinstallation ist fehlgeschlagen."
+  fi
+}
+
+check_dependencies() {
+  local required_core=(qm pvesm apt-get)
+  local installable_cmds=(whiptail curl git jq ansible-playbook ssh nc ping)
+  local missing_core=()
+  local missing_installable_cmds=()
+  local install_packages=()
+  local dep
+  local pkg
+
+  for dep in "${required_core[@]}"; do
     if ! command -v "$dep" >/dev/null 2>&1; then
-      missing+=("$dep")
+      missing_core+=("$dep")
     fi
   done
 
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    die "Fehlende Abhängigkeiten: ${missing[*]}\nBitte installieren und erneut starten."
+  if [[ ${#missing_core[@]} -gt 0 ]]; then
+    die "Proxmox/System-Kommandos fehlen: ${missing_core[*]}\nBitte Host-Setup prüfen und erneut starten."
   fi
+
+  for dep in "${installable_cmds[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      missing_installable_cmds+=("$dep")
+      case "$dep" in
+        whiptail) pkg="whiptail" ;;
+        curl) pkg="curl" ;;
+        git) pkg="git" ;;
+        jq) pkg="jq" ;;
+        ansible-playbook) pkg="ansible" ;;
+        ssh) pkg="openssh-client" ;;
+        nc) pkg="netcat-openbsd" ;;
+        ping) pkg="iputils-ping" ;;
+        *) pkg="" ;;
+      esac
+      if [[ -n "$pkg" ]]; then
+        install_packages+=("$pkg")
+      fi
+    fi
+  done
+
+  if [[ ${#missing_installable_cmds[@]} -gt 0 ]]; then
+    if ask_yes_no "Fehlende Pakete" \
+      "Folgende Abhängigkeiten fehlen:\n\n${missing_installable_cmds[*]}\n\nSollen diese jetzt automatisch installiert werden?"; then
+      install_missing_packages "${install_packages[@]}"
+      log_info "Fehlende Pakete wurden installiert."
+    else
+      die "Abgebrochen, weil notwendige Pakete fehlen: ${missing_installable_cmds[*]}"
+    fi
+  fi
+
+  for dep in "${installable_cmds[@]}"; do
+    if ! command -v "$dep" >/dev/null 2>&1; then
+      die "Abhängigkeit '$dep' ist weiterhin nicht verfügbar. Bitte manuell prüfen."
+    fi
+  done
 }
 
 print_header() {
