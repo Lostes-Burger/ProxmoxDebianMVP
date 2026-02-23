@@ -191,6 +191,34 @@ choose_storage() {
   echo "$selected"
 }
 
+choose_snippets_storage() {
+  local preferred="$1"
+  local menu_items=()
+  local storage
+
+  while read -r storage; do
+    [[ -n "$storage" ]] || continue
+    if pvesm config "$storage" 2>/dev/null | awk '/^content /{print $2}' | grep -Eq '(^|,)snippets(,|$)'; then
+      menu_items+=("$storage" "Snippets aktiviert")
+    fi
+  done < <(pvesm status | awk 'NR>1 {print $1}')
+
+  [[ ${#menu_items[@]} -gt 0 ]] || die "Kein Storage mit Content-Typ 'snippets' gefunden."
+
+  local default="$preferred"
+  if [[ -z "$default" ]]; then
+    default="${menu_items[0]}"
+  fi
+
+  local selected
+  if ! selected=$(whiptail --title "Cloud-Init Snippets" --menu "Storage für Cloud-Init User-Data (snippets) auswählen" 16 80 8 \
+    --default-item "$default" "${menu_items[@]}" 3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  echo "$selected"
+}
+
 choose_bridge() {
   local bridges=()
   local br
@@ -274,6 +302,8 @@ collect_wizard_config() {
 
   local vm_storage
   vm_storage="$(choose_storage "Storage" "Storage für VM-Disk auswählen" "local-lvm")"
+  local snippets_storage
+  snippets_storage="$(choose_snippets_storage "local")"
 
   local vm_bridge
   vm_bridge="$(choose_bridge)"
@@ -325,6 +355,7 @@ Name: $vm_name
 CPU/RAM: $vm_cores / ${vm_ram}MB
 Disk: ${vm_disk}GB
 Storage: $vm_storage
+Snippet-Storage: $snippets_storage
 Bridge: $vm_bridge
 VLAN: ${vlan_tag:-untagged}
 IP-Modus: $ip_mode
@@ -346,6 +377,7 @@ VM_CORES="$vm_cores"
 VM_RAM="$vm_ram"
 VM_DISK_GB="$vm_disk"
 VM_STORAGE="$vm_storage"
+SNIPPETS_STORAGE="$snippets_storage"
 VM_BRIDGE="$vm_bridge"
 VLAN_TAG="$vlan_tag"
 IP_MODE="$ip_mode"

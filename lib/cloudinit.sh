@@ -2,25 +2,14 @@
 
 set -euo pipefail
 
-find_snippets_storage() {
-  local storage
-  while read -r storage; do
-    [[ -n "$storage" ]] || continue
-    if pvesm config "$storage" 2>/dev/null | awk '/^content /{print $2}' | tr ',' '\n' | grep -qx "snippets"; then
-      echo "$storage"
-      return 0
-    fi
-  done < <(pvesm status | awk 'NR>1 {print $1}')
-
-  return 1
-}
-
 configure_cloud_init_userdata() {
   local vmid="$1"
+  local snippets_storage="$2"
 
-  local snippets_storage
-  snippets_storage="$(find_snippets_storage || true)"
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
+  if ! pvesm config "$snippets_storage" 2>/dev/null | awk '/^content /{print $2}' | grep -Eq '(^|,)snippets(,|$)'; then
+    die "Storage '$snippets_storage' hat keinen Content-Typ 'snippets'."
+  fi
 
   local snippet_volid="${snippets_storage}:snippets/orchestrator-${vmid}-user.yml"
   local snippet_path
@@ -46,12 +35,13 @@ EOT
 configure_cloud_init() {
   local vmid="$1"
   local vm_storage="$2"
-  local ci_user="$3"
-  local ssh_pubkey_path="$4"
-  local ip_mode="$5"
-  local ip_cidr="$6"
-  local gateway="$7"
-  local dns_server="$8"
+  local snippets_storage="$3"
+  local ci_user="$4"
+  local ssh_pubkey_path="$5"
+  local ip_mode="$6"
+  local ip_cidr="$7"
+  local gateway="$8"
+  local dns_server="$9"
 
   [[ -f "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden: $ssh_pubkey_path"
 
@@ -63,7 +53,7 @@ configure_cloud_init() {
   qm set "$vmid" --ciuser "$ci_user" >/dev/null
   qm set "$vmid" --sshkeys "$ssh_pubkey_path" >/dev/null
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid"
+  configure_cloud_init_userdata "$vmid" "$snippets_storage"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null

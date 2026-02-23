@@ -36,7 +36,7 @@ main() {
     "$VMID" "$VM_NAME" "$VM_CORES" "$VM_RAM" "$VM_DISK_GB" "$VM_STORAGE" "$VM_BRIDGE" "$VLAN_TAG" "$image_path"
 
   configure_cloud_init \
-    "$VMID" "$VM_STORAGE" "$CI_USER" "$SSH_PUBKEY_PATH" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
+    "$VMID" "$VM_STORAGE" "$SNIPPETS_STORAGE" "$CI_USER" "$SSH_PUBKEY_PATH" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
 
   start_vm "$VMID"
 

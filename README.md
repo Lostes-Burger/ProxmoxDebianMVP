@@ -18,6 +18,7 @@ chmod +x orchestrator.sh
   - Storage-Name
   - Typ (`zfs`, `lvmthin`, `ceph`, ...)
   - Used/Free/Total in `GB`/`TB` + Auslastung in `%`
+- Separate Auswahl für Cloud-Init Snippet-Storage (mit `snippets` Content), z. B. `local`
 - Netzwerk:
   - nur echte Bridge-Interfaces (`vmbr*`) in der Auswahl
   - optionaler VLAN-Tag
@@ -54,5 +55,5 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 
 - Während der Provisionierung gibt es laufend Konsolen-Feedback (z. B. Warten auf DHCP-IP, Ping/SSH-Checks).
 - Bei DHCP wird die IP automatisch über `qemu-guest-agent` ermittelt (kein manueller IP-Prompt mehr).
-- Voraussetzung: mindestens ein Proxmox-Storage mit Content-Typ `snippets` für Cloud-Init User-Data.
+- VM-Disk und Cloud-Init-Snippets können auf unterschiedlichen Storages liegen (z. B. VM auf `bigdata`, Snippets auf `local`).
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).
