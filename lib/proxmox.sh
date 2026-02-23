@@ -115,24 +115,32 @@ wait_for_ssh() {
     local rc=1
     if [[ "$auth_mode" == "key" ]]; then
       if [[ -f "$key_path" ]]; then
-        ssh -o BatchMode=yes \
+        if ssh -o BatchMode=yes \
           -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
           -o ConnectTimeout=5 \
           -i "$key_path" \
           -p "$port" \
-          "${user}@${ip}" "true" >/dev/null 2>&1 || rc=$?
+          "${user}@${ip}" "true" >/dev/null 2>&1; then
+          rc=0
+        else
+          rc=$?
+        fi
       fi
     else
       if [[ -n "$password" ]]; then
-        sshpass -p "$password" ssh \
+        if sshpass -p "$password" ssh \
           -o StrictHostKeyChecking=no \
           -o UserKnownHostsFile=/dev/null \
           -o ConnectTimeout=5 \
           -o PreferredAuthentications=password \
           -o PubkeyAuthentication=no \
           -p "$port" \
-          "${user}@${ip}" "true" >/dev/null 2>&1 || rc=$?
+          "${user}@${ip}" "true" >/dev/null 2>&1; then
+          rc=0
+        else
+          rc=$?
+        fi
       fi
     fi
 
