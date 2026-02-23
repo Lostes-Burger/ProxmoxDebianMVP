@@ -7,15 +7,18 @@ storage_has_content_type() {
   local wanted="$2"
 
   awk -v s="$storage" -v w="$wanted" '
-    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ && $2 == s { in_block=1; next }
-    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ { in_block=0 }
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs):$/ && $2 == s { in_block=1; next }
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs):$/ { in_block=0 }
     in_block && $1 == "content" {
-      gsub(/,/, " ", $2)
-      n=split($2, a, " ")
+      content=$2
+      for (i=3; i<=NF; i++) content=content $i
+      gsub(/[[:space:]]/, "", content)
+      gsub(/,/, " ", content)
+      n=split(content, a, " ")
       for (i=1; i<=n; i++) if (a[i] == w) { print "yes"; exit 0 }
       exit 1
     }
-    END { if (!in_block) exit 1 }
+    END { exit 1 }
   ' /etc/pve/storage.cfg >/dev/null 2>&1
 }
 
