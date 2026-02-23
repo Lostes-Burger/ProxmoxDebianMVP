@@ -2,6 +2,47 @@
 
 set -euo pipefail
 
+find_snippets_storage() {
+  local storage
+  while read -r storage; do
+    [[ -n "$storage" ]] || continue
+    if pvesm config "$storage" 2>/dev/null | awk '/^content /{print $2}' | tr ',' '\n' | grep -qx "snippets"; then
+      echo "$storage"
+      return 0
+    fi
+  done < <(pvesm status | awk 'NR>1 {print $1}')
+
+  return 1
+}
+
+configure_cloud_init_userdata() {
+  local vmid="$1"
+
+  local snippets_storage
+  snippets_storage="$(find_snippets_storage || true)"
+  [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
+
+  local snippet_volid="${snippets_storage}:snippets/orchestrator-${vmid}-user.yml"
+  local snippet_path
+  snippet_path="$(pvesm path "$snippet_volid" 2>/dev/null || true)"
+  [[ -n "$snippet_path" ]] || die "Snippet-Pfad konnte nicht aufgelöst werden: $snippet_volid"
+
+  mkdir -p "$(dirname "$snippet_path")"
+  cat >"$snippet_path" <<'EOT'
+#cloud-config
+package_update: true
+packages:
+  - python3
+  - python3-apt
+  - qemu-guest-agent
+runcmd:
+  - systemctl enable --now qemu-guest-agent
+EOT
+
+  qm set "$vmid" --cicustom "user=${snippet_volid}" >/dev/null
+  log_info "Cloud-Init User-Data gesetzt: ${snippet_volid}"
+}
+
 configure_cloud_init() {
   local vmid="$1"
   local vm_storage="$2"
@@ -22,6 +63,7 @@ configure_cloud_init() {
   qm set "$vmid" --ciuser "$ci_user" >/dev/null
   qm set "$vmid" --sshkeys "$ssh_pubkey_path" >/dev/null
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
+  configure_cloud_init_userdata "$vmid"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null
@@ -40,7 +82,7 @@ resolve_vm_ip() {
     return 0
   fi
 
-  local deadline=$((SECONDS + 15))
+  local deadline=$((SECONDS + 240))
   local attempt=1
   while (( SECONDS < deadline )); do
     log_info "Warte auf DHCP-IP via qemu-guest-agent (VM ${vmid}) - Versuch ${attempt}"
@@ -60,13 +102,5 @@ resolve_vm_ip() {
     sleep 3
   done
 
-  log_error "DHCP-IP konnte nicht automatisch via qemu-guest-agent ermittelt werden."
-
-  local manual_ip
-  if ! manual_ip="$(whiptail --inputbox "Bitte DHCP-IP der VM manuell eingeben (QGA wird danach verpflichtend installiert)." 12 80 "" 3>&1 1>&2 2>&3)"; then
-    die "Keine DHCP-IP verfügbar und manuelle Eingabe abgebrochen."
-  fi
-
-  [[ -n "$manual_ip" ]] || die "Manuelle DHCP-IP darf nicht leer sein."
-  echo "$manual_ip"
+  die "DHCP-IP konnte nicht automatisch via qemu-guest-agent ermittelt werden. Prüfe DHCP/VLAN/Cloud-Init oder nutze statische IP."
 }

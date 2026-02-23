@@ -53,5 +53,6 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 ## Hinweise
 
 - Während der Provisionierung gibt es laufend Konsolen-Feedback (z. B. Warten auf DHCP-IP, Ping/SSH-Checks).
-- Bei DHCP wird kurz versucht, die IP per QGA zu lesen; wenn das nicht klappt, fragt der Wizard die VM-IP manuell ab.
+- Bei DHCP wird die IP automatisch über `qemu-guest-agent` ermittelt (kein manueller IP-Prompt mehr).
+- Voraussetzung: mindestens ein Proxmox-Storage mit Content-Typ `snippets` für Cloud-Init User-Data.
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).
