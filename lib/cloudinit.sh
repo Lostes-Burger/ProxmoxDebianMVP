@@ -2,12 +2,29 @@
 
 set -euo pipefail
 
+storage_has_content_type() {
+  local storage="$1"
+  local wanted="$2"
+
+  awk -v s="$storage" -v w="$wanted" '
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ && $2 == s { in_block=1; next }
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ { in_block=0 }
+    in_block && $1 == "content" {
+      gsub(/,/, " ", $2)
+      n=split($2, a, " ")
+      for (i=1; i<=n; i++) if (a[i] == w) { print "yes"; exit 0 }
+      exit 1
+    }
+    END { if (!in_block) exit 1 }
+  ' /etc/pve/storage.cfg >/dev/null 2>&1
+}
+
 configure_cloud_init_userdata() {
   local vmid="$1"
   local snippets_storage="$2"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
-  if ! pvesm config "$snippets_storage" 2>/dev/null | awk '/^content /{print $2}' | grep -Eq '(^|,)snippets(,|$)'; then
+  if ! storage_has_content_type "$snippets_storage" "snippets"; then
     die "Storage '$snippets_storage' hat keinen Content-Typ 'snippets'."
   fi
 

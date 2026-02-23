@@ -150,6 +150,23 @@ format_kib_human() {
   fi
 }
 
+storage_has_content_type() {
+  local storage="$1"
+  local wanted="$2"
+
+  awk -v s="$storage" -v w="$wanted" '
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ && $2 == s { in_block=1; next }
+    $1 ~ /^(dir|zfspool|lvm|lvmthin|nfs|cifs|rbd|pbs)$/ { in_block=0 }
+    in_block && $1 == "content" {
+      gsub(/,/, " ", $2)
+      n=split($2, a, " ")
+      for (i=1; i<=n; i++) if (a[i] == w) { print "yes"; exit 0 }
+      exit 1
+    }
+    END { if (!in_block) exit 1 }
+  ' /etc/pve/storage.cfg >/dev/null 2>&1
+}
+
 choose_storage() {
   local title="$1"
   local prompt="$2"
@@ -198,7 +215,7 @@ choose_snippets_storage() {
 
   while read -r storage; do
     [[ -n "$storage" ]] || continue
-    if pvesm config "$storage" 2>/dev/null | awk '/^content /{print $2}' | grep -Eq '(^|,)snippets(,|$)'; then
+    if storage_has_content_type "$storage" "snippets"; then
       menu_items+=("$storage" "Snippets aktiviert")
     fi
   done < <(pvesm status | awk 'NR>1 {print $1}')
