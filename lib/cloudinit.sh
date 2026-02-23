@@ -41,7 +41,9 @@ resolve_vm_ip() {
   fi
 
   local deadline=$((SECONDS + 120))
+  local attempt=1
   while (( SECONDS < deadline )); do
+    log_info "Warte auf DHCP-IP via qemu-guest-agent (VM ${vmid}) - Versuch ${attempt}"
     local vm_ip
     vm_ip="$(qm guest cmd "$vmid" network-get-interfaces 2>/dev/null \
       | jq -r '.[] | .["ip-addresses"][]? | select(.["ip-address-type"]=="ipv4") | .["ip-address"]' \
@@ -49,12 +51,22 @@ resolve_vm_ip() {
       | head -n1 || true)"
 
     if [[ -n "$vm_ip" ]]; then
+      log_info "DHCP-IP gefunden: $vm_ip"
       echo "$vm_ip"
       return 0
     fi
 
+    attempt=$((attempt + 1))
     sleep 3
   done
 
-  die "DHCP-IP konnte nicht automatisch ermittelt werden (qemu-guest-agent nicht bereit)."
+  log_error "DHCP-IP konnte nicht automatisch ermittelt werden (qemu-guest-agent nicht bereit)."
+
+  local manual_ip
+  if ! manual_ip="$(whiptail --inputbox "Bitte DHCP-IP der VM manuell eingeben" 11 70 "" 3>&1 1>&2 2>&3)"; then
+    die "Keine DHCP-IP verfügbar und manuelle Eingabe abgebrochen."
+  fi
+
+  [[ -n "$manual_ip" ]] || die "Manuelle DHCP-IP darf nicht leer sein."
+  echo "$manual_ip"
 }

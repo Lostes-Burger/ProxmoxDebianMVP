@@ -37,7 +37,8 @@ run_ansible() {
   local port="$3"
   local user="$4"
   local key_path="$5"
-  local selected_apps_csv="$6"
+  local selected_modules_csv="$6"
+  local selected_apps_csv="$7"
 
   local work_dir
   work_dir="$(mktemp -d /tmp/proxmox-orchestrator-ansible-XXXX)"
@@ -50,6 +51,15 @@ EOT
 
   local vars_file="$work_dir/vars.yml"
   {
+    echo "modules_selected:"
+    if [[ -n "$selected_modules_csv" ]]; then
+      local module
+      IFS=',' read -r -a modules_array <<<"$selected_modules_csv"
+      for module in "${modules_array[@]}"; do
+        [[ -n "$module" ]] && printf '  - %s\n' "$module"
+      done
+    fi
+
     echo "apps_selected:"
     if [[ -n "$selected_apps_csv" ]]; then
       local app

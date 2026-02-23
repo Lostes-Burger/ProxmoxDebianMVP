@@ -19,9 +19,6 @@ check_storage_exists() {
 }
 
 ensure_debian13_image() {
-  local image_storage="$1"
-  check_storage_exists "$image_storage"
-
   local base_dir="/var/lib/vz/template/iso"
   local image_file="${base_dir}/debian-13-genericcloud-amd64.qcow2"
 
@@ -44,7 +41,8 @@ create_vm() {
   local vm_disk_gb="$5"
   local vm_storage="$6"
   local vm_bridge="$7"
-  local image_path="$8"
+  local vlan_tag="$8"
+  local image_path="$9"
 
   check_vmid_available "$vmid"
   check_storage_exists "$vm_storage"
@@ -53,13 +51,23 @@ create_vm() {
     die "Ungültige Bridge '$vm_bridge'. Erwartet: vmbrX"
   fi
 
+  if [[ -n "$vlan_tag" ]] && ! [[ "$vlan_tag" =~ ^[0-9]+$ ]]; then
+    die "Ungültiger VLAN Tag '$vlan_tag'."
+  fi
+
+  local net0="virtio,bridge=$vm_bridge"
+  if [[ -n "$vlan_tag" ]]; then
+    net0+=",tag=$vlan_tag"
+  fi
+
   log_info "Erstelle VM $vmid ($vm_name)"
+  log_info "Netzwerk: bridge=$vm_bridge vlan=${vlan_tag:-untagged}"
 
   qm create "$vmid" \
     --name "$vm_name" \
     --memory "$vm_ram" \
     --cores "$vm_cores" \
-    --net0 "virtio,bridge=$vm_bridge" \
+    --net0 "$net0" \
     --scsihw virtio-scsi-pci \
     --serial0 socket \
     --vga serial0 \
@@ -92,11 +100,14 @@ wait_for_ssh() {
   local interval="$4"
 
   local deadline=$((SECONDS + timeout))
+  local attempt=1
   while (( SECONDS < deadline )); do
+    log_info "Warte auf VM Netzwerk/SSH (${ip}:${port}) - Versuch ${attempt}"
     if ping -c1 -W1 "$ip" >/dev/null 2>&1 && nc -z -w1 "$ip" "$port" >/dev/null 2>&1; then
       log_info "SSH erreichbar auf $ip:$port"
       return 0
     fi
+    attempt=$((attempt + 1))
     sleep "$interval"
   done
 

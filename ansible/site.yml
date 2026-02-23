@@ -4,12 +4,20 @@
   become: true
 
   tasks:
+    - name: Show selected modules
+      ansible.builtin.debug:
+        msg: "Ausgewählte Module: {{ modules_selected | default([]) | join(', ') if (modules_selected | default([]) | length > 0) else 'keine' }}"
+
     - name: Validate selected apps
       ansible.builtin.assert:
         that:
           - item in ['docker', 'nginx']
         fail_msg: "Unbekannte App ausgewählt: {{ item }}"
       loop: "{{ apps_selected | default([]) }}"
+
+    - name: Show selected apps
+      ansible.builtin.debug:
+        msg: "Ausgewählte Apps: {{ apps_selected | default([]) | join(', ') if (apps_selected | default([]) | length > 0) else 'keine' }}"
 
     - name: Run selected app roles
       ansible.builtin.include_role:

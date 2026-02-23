@@ -5,8 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=lib/ui.sh
 source "$SCRIPT_DIR/lib/ui.sh"
-# shellcheck source=lib/catalog.sh
-source "$SCRIPT_DIR/lib/catalog.sh"
 # shellcheck source=lib/proxmox.sh
 source "$SCRIPT_DIR/lib/proxmox.sh"
 # shellcheck source=lib/cloudinit.sh
@@ -29,17 +27,13 @@ main() {
   # shellcheck disable=SC1090
   source "$config_file"
 
-  if [[ -n "${CATALOG_REPO_URL:-}" ]]; then
-    sync_catalog_repo "$CATALOG_REPO_URL" "${CATALOG_BRANCH:-main}" "$SCRIPT_DIR/catalog"
-  else
-    log_info "Kein Catalog-Repo konfiguriert, nutze lokale Rollen unter ansible/roles/apps"
-  fi
+  log_info "Nutze lokale Rollen unter ansible/roles/apps"
 
   local image_path
-  image_path="$(ensure_debian13_image "${IMAGE_STORAGE}")"
+  image_path="$(ensure_debian13_image)"
 
   create_vm \
-    "$VMID" "$VM_NAME" "$VM_CORES" "$VM_RAM" "$VM_DISK_GB" "$VM_STORAGE" "$VM_BRIDGE" "$image_path"
+    "$VMID" "$VM_NAME" "$VM_CORES" "$VM_RAM" "$VM_DISK_GB" "$VM_STORAGE" "$VM_BRIDGE" "$VLAN_TAG" "$image_path"
 
   configure_cloud_init \
     "$VMID" "$VM_STORAGE" "$CI_USER" "$SSH_PUBKEY_PATH" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
@@ -52,7 +46,7 @@ main() {
 
   bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_PRIVATE_KEY_PATH"
 
-  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_PRIVATE_KEY_PATH" "$SELECTED_APPS"
+  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_PRIVATE_KEY_PATH" "$SELECTED_MODULES" "$SELECTED_APPS"
 
   whiptail --title "Fertig" --msgbox "Provisionierung abgeschlossen.\n\nVM: ${VM_NAME} (${VMID})\nIP: ${target_ip}" 12 70
   log_info "Provisionierung erfolgreich abgeschlossen"

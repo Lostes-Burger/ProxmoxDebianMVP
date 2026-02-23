@@ -13,7 +13,7 @@ init_logging() {
 
 log_info() {
   local msg="$1"
-  printf '[%s] INFO: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" | tee -a "$LOG_FILE" >/dev/null
+  printf '[%s] INFO: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" | tee -a "$LOG_FILE"
 }
 
 log_error() {
@@ -64,7 +64,7 @@ install_missing_packages() {
 
 check_dependencies() {
   local required_core=(qm pvesm apt-get)
-  local installable_cmds=(whiptail curl git jq ansible-playbook ssh nc ping)
+  local installable_cmds=(whiptail curl git jq ansible-playbook ssh nc ping ip)
   local missing_core=()
   local missing_installable_cmds=()
   local install_packages=()
@@ -93,6 +93,7 @@ check_dependencies() {
         ssh) pkg="openssh-client" ;;
         nc) pkg="netcat-openbsd" ;;
         ping) pkg="iputils-ping" ;;
+        ip) pkg="iproute2" ;;
         *) pkg="" ;;
       esac
       if [[ -n "$pkg" ]]; then
@@ -120,7 +121,7 @@ check_dependencies() {
 
 print_header() {
   whiptail --title "Proxmox Debian VM Orchestrator" --msgbox \
-    "Interaktiver Setup-Assistent\n\nDieser Wizard erstellt eine Debian-13-VM und installiert ausgewählte Apps per Ansible." \
+    "Interaktiver Setup-Assistent\n\nDieser Wizard erstellt eine Debian-13-VM und installiert ausgewählte Module/Apps per Ansible." \
     13 78
 }
 
@@ -134,6 +135,58 @@ next_vmid_default() {
   fi
 }
 
+choose_storage() {
+  local title="$1"
+  local prompt="$2"
+  local preferred="$3"
+
+  local menu_items=()
+  while read -r name type status total used avail _pct; do
+    [[ -z "$name" ]] && continue
+    local desc
+    desc="type=${type} | status=${status} | used=${used}KiB | free=${avail}KiB | total=${total}KiB"
+    menu_items+=("$name" "$desc")
+  done < <(pvesm status | awk 'NR>1 {print $1, $2, $3, $4, $5, $6, $7}')
+
+  [[ ${#menu_items[@]} -gt 0 ]] || die "Keine Storages via pvesm gefunden."
+
+  local default="$preferred"
+  if [[ -z "$default" ]]; then
+    default="${menu_items[0]}"
+  fi
+
+  local selected
+  if ! selected=$(whiptail --title "$title" --menu "$prompt" 22 110 12 \
+    --default-item "$default" "${menu_items[@]}" 3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  echo "$selected"
+}
+
+choose_bridge() {
+  local bridges=()
+  local br
+
+  while read -r br; do
+    [[ -n "$br" ]] && bridges+=("$br" "$br")
+  done < <(ip -o link show | awk -F': ' '{print $2}' | grep '^vmbr' || true)
+
+  if [[ ${#bridges[@]} -eq 0 ]]; then
+    if ! br=$(whiptail --inputbox "Keine vmbr automatisch gefunden. Bridge manuell eingeben" 11 70 "vmbr0" 3>&1 1>&2 2>&3); then
+      die "Vom Benutzer abgebrochen."
+    fi
+    echo "$br"
+    return 0
+  fi
+
+  if ! br=$(whiptail --title "Netzwerk" --menu "Bridge auswählen" 18 70 8 "${bridges[@]}" 3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  echo "$br"
+}
+
 choose_ip_mode() {
   whiptail --title "Netzwerk" --radiolist "IP-Konfiguration wählen" 15 70 2 \
     "dhcp" "DHCP" ON \
@@ -141,12 +194,32 @@ choose_ip_mode() {
     3>&1 1>&2 2>&3
 }
 
+choose_modules() {
+  local selection
+  if ! selection=$(whiptail --title "Module" --checklist "Optionale Module (leer möglich)" 20 85 8 \
+    "baseline_tools" "Basiswerkzeuge" OFF \
+    "unattended_upgrades" "Automatische Updates" OFF \
+    "ufw" "Firewall" OFF \
+    "fail2ban" "Bruteforce-Schutz" OFF \
+    "qemu_guest_agent" "QEMU Guest Agent" OFF \
+    "sysctl_hardening" "Kernel Hardening" OFF \
+    3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  selection="${selection//\"/}"
+  selection="${selection// /,}"
+  echo "$selection"
+}
+
 choose_apps() {
   local selection
-  selection="$(whiptail --title "Apps" --checklist "Wähle Apps für die Installation" 15 75 5 \
+  if ! selection=$(whiptail --title "Apps" --checklist "Wähle Apps (leer möglich)" 15 75 5 \
     "docker" "Docker Engine + Compose Plugin" OFF \
     "nginx" "Nginx Webserver" OFF \
-    3>&1 1>&2 2>&3)"
+    3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
 
   selection="${selection//\"/}"
   selection="${selection// /,}"
@@ -173,13 +246,18 @@ collect_wizard_config() {
   vm_disk="$(whiptail --inputbox "Disk in GB" 10 60 "20" 3>&1 1>&2 2>&3)"
 
   local vm_storage
-  vm_storage="$(whiptail --inputbox "Proxmox Storage Name" 10 60 "local-lvm" 3>&1 1>&2 2>&3)"
-
-  local image_storage
-  image_storage="$(whiptail --inputbox "Storage für Debian Cloud Image" 10 60 "local" 3>&1 1>&2 2>&3)"
+  vm_storage="$(choose_storage "Storage" "Storage für VM-Disk auswählen" "local-lvm")"
 
   local vm_bridge
-  vm_bridge="$(whiptail --inputbox "Bridge Interface (z.B. vmbr0)" 10 60 "vmbr0" 3>&1 1>&2 2>&3)"
+  vm_bridge="$(choose_bridge)"
+
+  local vlan_tag
+  vlan_tag="$(whiptail --inputbox "Optional VLAN Tag (1-4094, leer = untagged)" 11 70 "" 3>&1 1>&2 2>&3)"
+  if [[ -n "$vlan_tag" ]]; then
+    if ! [[ "$vlan_tag" =~ ^[0-9]+$ ]] || (( vlan_tag < 1 || vlan_tag > 4094 )); then
+      die "VLAN Tag muss leer oder eine Zahl von 1 bis 4094 sein."
+    fi
+  fi
 
   local ip_mode
   ip_mode="$(choose_ip_mode)"
@@ -207,15 +285,11 @@ collect_wizard_config() {
 
   local ssh_port="22"
 
+  local modules
+  modules="$(choose_modules)"
+
   local apps
   apps="$(choose_apps)"
-
-  local repo_url
-  repo_url="$(whiptail --inputbox "Optional: Git URL für externen App-Catalog (leer = lokal)" 12 90 "" 3>&1 1>&2 2>&3 || true)"
-  local repo_branch="main"
-  if [[ -n "$repo_url" ]]; then
-    repo_branch="$(whiptail --inputbox "Catalog Branch" 10 60 "main" 3>&1 1>&2 2>&3)"
-  fi
 
   local summary
   summary=$(cat <<EOT
@@ -225,15 +299,16 @@ CPU/RAM: $vm_cores / ${vm_ram}MB
 Disk: ${vm_disk}GB
 Storage: $vm_storage
 Bridge: $vm_bridge
+VLAN: ${vlan_tag:-untagged}
 IP-Modus: $ip_mode
 User: $ci_user
 SSH Key: $ssh_pub
+Module: ${modules:-keine}
 Apps: ${apps:-keine}
-Catalog Repo: ${repo_url:-lokal}
 EOT
 )
 
-  if ! whiptail --title "Bestätigung" --yesno "$summary\n\nWeiter mit Erstellung?" 22 80; then
+  if ! whiptail --title "Bestätigung" --yesno "$summary\n\nWeiter mit Erstellung?" 22 85; then
     die "Vom Benutzer abgebrochen."
   fi
 
@@ -244,8 +319,8 @@ VM_CORES="$vm_cores"
 VM_RAM="$vm_ram"
 VM_DISK_GB="$vm_disk"
 VM_STORAGE="$vm_storage"
-IMAGE_STORAGE="$image_storage"
 VM_BRIDGE="$vm_bridge"
+VLAN_TAG="$vlan_tag"
 IP_MODE="$ip_mode"
 IP_CIDR="$ip_cidr"
 GATEWAY="$gateway"
@@ -254,8 +329,7 @@ CI_USER="$ci_user"
 SSH_PUBKEY_PATH="$ssh_pub"
 SSH_PRIVATE_KEY_PATH="$ssh_priv"
 SSH_PORT="$ssh_port"
+SELECTED_MODULES="$modules"
 SELECTED_APPS="$apps"
-CATALOG_REPO_URL="$repo_url"
-CATALOG_BRANCH="$repo_branch"
 EOT
 }

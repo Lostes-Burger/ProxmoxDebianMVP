@@ -1,23 +1,6 @@
 # Proxmox Debian VM Orchestrator (MVP)
 
-Interaktives CLI-Tool für Proxmox 8 zur Erstellung einer Debian-13-VM und optionalen App-Installation via Ansible.
-
-## Enthalten (MVP)
-
-- Interaktiver Wizard (`whiptail`)
-- VM-Erstellung (`qm create`, `qm importdisk`, Cloud-Init)
-- VM-Ressourcen im Wizard:
-  - VMID, Name
-  - vCPU, RAM
-  - Disk-Größe
-  - VM-Storage (z. B. `local-lvm`)
-  - Storage für Cloud-Image
-  - Netzwerk: DHCP oder statisch, Bridge auswählbar
-  - SSH key-only Setup
-  - SSH Wait + VM Bootstrap (Python + qemu-guest-agent)
-  - Ansible Provisionierung mit optionalen Apps:
-  - `docker`
-  - `nginx`
+Interaktives CLI-Tool für Proxmox 8 zur Erstellung einer Debian-13-VM und optionalen Installation von Modulen/Apps via Ansible.
 
 ## Wizard starten
 
@@ -28,18 +11,27 @@ chmod +x orchestrator.sh
 ./orchestrator.sh
 ```
 
-## Welche Dateien aus dem Repo werden benötigt?
+## Was der Wizard abfragt
 
-Für den Start des Wizards und den MVP-Flow werden diese Dateien/Ordner benötigt:
+- VM-Ressourcen: `VMID`, `Name`, `vCPU`, `RAM`, `Disk`
+- Storage-Auswahl per Menü aus `pvesm status`:
+  - Storage-Name
+  - Typ (`zfs`, `lvmthin`, `ceph`, ...)
+  - Used/Free/Total
+- Netzwerk:
+  - Bridge (`vmbr*`) Auswahl
+  - optionaler VLAN-Tag
+  - DHCP oder statische IP
+- SSH key-only (`Public/Private Key Pfad`)
+- Optionale Module (auch leer möglich)
+- Optionale Apps `docker` und `nginx` (auch leer möglich)
+
+## Benötigte Dateien im Repo
 
 - `orchestrator.sh`
 - `lib/`
 - `ansible/site.yml`
 - `ansible/roles/apps/`
-
-Optional:
-
-- `catalog/` (nur wenn externer App-Catalog genutzt wird)
 
 ## Benötigte Pakete auf dem Proxmox-Host
 
@@ -53,14 +45,11 @@ Optional:
 - `ssh`
 - `nc`
 - `ping`
+- `ip`
 
-Wenn etwas fehlt, bricht das Tool mit klarer Meldung ab.
-
-Fehlende installierbare Pakete werden im Wizard erkannt. Du kannst dann wählen:
-- automatisch installieren
-- oder Setup abbrechen
+Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installiert werden sollen oder ob abgebrochen wird.
 
 ## Hinweise
 
-- Externer App-Catalog ist optional; für den MVP werden lokale Rollen genutzt.
+- Während der Provisionierung gibt es laufend Konsolen-Feedback (z. B. Warten auf DHCP-IP, Ping/SSH-Checks).
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).
