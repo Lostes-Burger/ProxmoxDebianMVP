@@ -21,7 +21,7 @@ main() {
 
   local config_file
   config_file="$(mktemp /tmp/proxmox-orchestrator-config-XXXX.env)"
-  trap 'rm -f "$config_file"' EXIT
+  trap '[[ -n "${config_file:-}" ]] && rm -f "$config_file"' EXIT
 
   collect_wizard_config "$config_file"
   # shellcheck disable=SC1090

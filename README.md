@@ -17,9 +17,9 @@ chmod +x orchestrator.sh
 - Storage-Auswahl per Menü aus `pvesm status`:
   - Storage-Name
   - Typ (`zfs`, `lvmthin`, `ceph`, ...)
-  - Used/Free/Total
+  - Used/Free/Total in `GB`/`TB` + Auslastung in `%`
 - Netzwerk:
-  - Bridge (`vmbr*`) Auswahl
+  - nur echte Bridge-Interfaces (`vmbr*`) in der Auswahl
   - optionaler VLAN-Tag
   - DHCP oder statische IP
 - SSH key-only (`Public/Private Key Pfad`)

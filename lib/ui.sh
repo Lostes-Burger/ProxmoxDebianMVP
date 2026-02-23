@@ -13,7 +13,7 @@ init_logging() {
 
 log_info() {
   local msg="$1"
-  printf '[%s] INFO: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" | tee -a "$LOG_FILE"
+  printf '[%s] INFO: %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$msg" | tee -a "$LOG_FILE" >&2
 }
 
 log_error() {
@@ -135,6 +135,21 @@ next_vmid_default() {
   fi
 }
 
+format_kib_human() {
+  local kib="$1"
+  if [[ ! "$kib" =~ ^[0-9]+$ ]]; then
+    echo "${kib}KiB"
+    return 0
+  fi
+
+  # 1 TiB = 1073741824 KiB, 1 GiB = 1048576 KiB
+  if (( kib >= 1073741824 )); then
+    awk -v v="$kib" 'BEGIN { printf "%.2fTB", v/1073741824 }'
+  else
+    awk -v v="$kib" 'BEGIN { printf "%.2fGB", v/1048576 }'
+  fi
+}
+
 choose_storage() {
   local title="$1"
   local prompt="$2"
@@ -143,8 +158,20 @@ choose_storage() {
   local menu_items=()
   while read -r name type status total used avail _pct; do
     [[ -z "$name" ]] && continue
+
+    local used_h free_h total_h used_pct
+    used_h="$(format_kib_human "$used")"
+    free_h="$(format_kib_human "$avail")"
+    total_h="$(format_kib_human "$total")"
+
+    if [[ "$used" =~ ^[0-9]+$ ]] && [[ "$total" =~ ^[0-9]+$ ]] && (( total > 0 )); then
+      used_pct="$(awk -v u="$used" -v t="$total" 'BEGIN { printf "%.1f%%", (u/t)*100 }')"
+    else
+      used_pct="n/a"
+    fi
+
     local desc
-    desc="type=${type} | status=${status} | used=${used}KiB | free=${avail}KiB | total=${total}KiB"
+    desc="type=${type} | status=${status} | used=${used_h} (${used_pct}) | free=${free_h} | total=${total_h}"
     menu_items+=("$name" "$desc")
   done < <(pvesm status | awk 'NR>1 {print $1, $2, $3, $4, $5, $6, $7}')
 
@@ -169,8 +196,9 @@ choose_bridge() {
   local br
 
   while read -r br; do
+    br="${br%%@*}"
     [[ -n "$br" ]] && bridges+=("$br" "$br")
-  done < <(ip -o link show | awk -F': ' '{print $2}' | grep '^vmbr' || true)
+  done < <(ip -d -o link show type bridge | awk -F': ' '{print $2}' | sed 's/@.*$//' | grep '^vmbr' | awk '!seen[$0]++' || true)
 
   if [[ ${#bridges[@]} -eq 0 ]]; then
     if ! br=$(whiptail --inputbox "Keine vmbr automatisch gefunden. Bridge manuell eingeben" 11 70 "vmbr0" 3>&1 1>&2 2>&3); then
