@@ -34,6 +34,7 @@ storage_has_content_type() {
 configure_cloud_init_userdata() {
   local vmid="$1"
   local snippets_storage="$2"
+  local ssh_auth_mode="$3"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
   if ! storage_has_content_type "$snippets_storage" "snippets"; then
@@ -46,13 +47,14 @@ configure_cloud_init_userdata() {
   [[ -n "$snippet_path" ]] || die "Snippet-Pfad konnte nicht aufgelöst werden: $snippet_volid"
 
   mkdir -p "$(dirname "$snippet_path")"
-  cat >"$snippet_path" <<'EOT'
+  cat >"$snippet_path" <<EOT
 #cloud-config
 package_update: true
 packages:
   - python3
   - python3-apt
   - qemu-guest-agent
+$( [[ "$ssh_auth_mode" == "password" ]] && echo "ssh_pwauth: true" )
 runcmd:
   - systemctl enable --now qemu-guest-agent
 EOT
@@ -66,13 +68,13 @@ configure_cloud_init() {
   local vm_storage="$2"
   local snippets_storage="$3"
   local ci_user="$4"
-  local ssh_pubkey_path="$5"
-  local ip_mode="$6"
-  local ip_cidr="$7"
-  local gateway="$8"
-  local dns_server="$9"
-
-  [[ -f "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden: $ssh_pubkey_path"
+  local ssh_auth_mode="$5"
+  local ssh_pubkey_path="$6"
+  local ci_password="$7"
+  local ip_mode="$8"
+  local ip_cidr="$9"
+  local gateway="${10}"
+  local dns_server="${11}"
 
   local ipconfig="ip=dhcp"
   if [[ "$ip_mode" == "static" ]]; then
@@ -80,9 +82,15 @@ configure_cloud_init() {
   fi
 
   qm set "$vmid" --ciuser "$ci_user" >/dev/null
-  qm set "$vmid" --sshkeys "$ssh_pubkey_path" >/dev/null
+  if [[ "$ssh_auth_mode" == "key" ]]; then
+    [[ -s "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden oder leer: $ssh_pubkey_path"
+    qm set "$vmid" --sshkeys "$ssh_pubkey_path" >/dev/null
+  else
+    [[ -n "$ci_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
+    qm set "$vmid" --cipassword "$ci_password" >/dev/null
+  fi
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid" "$snippets_storage"
+  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null
@@ -108,7 +116,9 @@ resolve_vm_ip() {
     local vm_ip
     vm_ip="$(qm guest cmd "$vmid" network-get-interfaces 2>/dev/null \
       | jq -r '.[] | .["ip-addresses"][]? | select(.["ip-address-type"]=="ipv4") | .["ip-address"]' \
-      | grep -Ev '^(127\\.|169\\.254\\.)' \
+      | sed 's/[[:space:]]//g' \
+      | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
+      | grep -Ev '^(127\\.|169\\.254\\.|0\\.|255\\.)' \
       | head -n1 || true)"
 
     if [[ -n "$vm_ip" ]]; then

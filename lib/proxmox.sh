@@ -99,6 +99,10 @@ wait_for_ssh() {
   local timeout="$3"
   local interval="$4"
 
+  if [[ "$ip" =~ ^127\. ]]; then
+    die "Ungültige Ziel-IP '$ip' (Loopback). DHCP/QGA-Ermittlung ist fehlerhaft."
+  fi
+
   local deadline=$((SECONDS + timeout))
   local attempt=1
   while (( SECONDS < deadline )); do

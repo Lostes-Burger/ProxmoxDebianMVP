@@ -64,7 +64,7 @@ install_missing_packages() {
 
 check_dependencies() {
   local required_core=(qm pvesm apt-get)
-  local installable_cmds=(whiptail curl git jq ansible-playbook ssh nc ping ip)
+  local installable_cmds=(whiptail curl git jq ansible-playbook ssh sshpass nc ping ip)
   local missing_core=()
   local missing_installable_cmds=()
   local install_packages=()
@@ -91,6 +91,7 @@ check_dependencies() {
         jq) pkg="jq" ;;
         ansible-playbook) pkg="ansible" ;;
         ssh) pkg="openssh-client" ;;
+        sshpass) pkg="sshpass" ;;
         nc) pkg="netcat-openbsd" ;;
         ping) pkg="iputils-ping" ;;
         ip) pkg="iproute2" ;;
@@ -364,10 +365,34 @@ collect_wizard_config() {
   ci_user="$(whiptail --inputbox "Cloud-Init Benutzer" 10 60 "debian" 3>&1 1>&2 2>&3)"
 
   local ssh_pub
-  ssh_pub="$(whiptail --inputbox "Pfad zum Public Key" 10 70 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
+  ssh_pub="$(whiptail --inputbox "Pfad zum Public Key (leer = Passwortmodus)" 11 80 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
 
-  local ssh_priv
-  ssh_priv="$(whiptail --inputbox "Pfad zum Private Key" 10 70 "$HOME/.ssh/id_rsa" 3>&1 1>&2 2>&3)"
+  local ssh_auth_mode=""
+  local ssh_priv=""
+  local ci_password=""
+
+  if [[ -n "$ssh_pub" ]]; then
+    [[ -e "$ssh_pub" ]] || die "Public Key Datei nicht gefunden: $ssh_pub"
+    if [[ -s "$ssh_pub" ]]; then
+      ssh_auth_mode="key"
+      ssh_priv="$(whiptail --inputbox "Pfad zum Private Key" 10 70 "$HOME/.ssh/id_rsa" 3>&1 1>&2 2>&3)"
+      [[ -n "$ssh_priv" ]] || die "Private Key Pfad darf nicht leer sein."
+    else
+      ssh_auth_mode="password"
+      ssh_pub=""
+    fi
+  else
+    ssh_auth_mode="password"
+  fi
+
+  if [[ "$ssh_auth_mode" == "password" ]]; then
+    local pass1 pass2
+    pass1="$(whiptail --passwordbox "Public Key leer. Bitte Passwort für Benutzer '$ci_user' setzen" 12 80 3>&1 1>&2 2>&3)"
+    pass2="$(whiptail --passwordbox "Passwort bestätigen" 10 60 3>&1 1>&2 2>&3)"
+    [[ -n "$pass1" ]] || die "Passwort darf nicht leer sein."
+    [[ "$pass1" == "$pass2" ]] || die "Passwörter stimmen nicht überein."
+    ci_password="$pass1"
+  fi
 
   local ssh_port="22"
 
@@ -390,6 +415,7 @@ VLAN: ${vlan_tag:-untagged}
 IP-Modus: $ip_mode
 User: $ci_user
 SSH Key: $ssh_pub
+SSH Auth: $ssh_auth_mode
 Module: ${modules:-keine}
 Apps: ${apps:-keine}
 EOT
@@ -399,25 +425,27 @@ EOT
     die "Vom Benutzer abgebrochen."
   fi
 
-  cat >"$output_file" <<EOT
-VMID="$vmid"
-VM_NAME="$vm_name"
-VM_CORES="$vm_cores"
-VM_RAM="$vm_ram"
-VM_DISK_GB="$vm_disk"
-VM_STORAGE="$vm_storage"
-SNIPPETS_STORAGE="$snippets_storage"
-VM_BRIDGE="$vm_bridge"
-VLAN_TAG="$vlan_tag"
-IP_MODE="$ip_mode"
-IP_CIDR="$ip_cidr"
-GATEWAY="$gateway"
-DNS_SERVER="$dns_server"
-CI_USER="$ci_user"
-SSH_PUBKEY_PATH="$ssh_pub"
-SSH_PRIVATE_KEY_PATH="$ssh_priv"
-SSH_PORT="$ssh_port"
-SELECTED_MODULES="$modules"
-SELECTED_APPS="$apps"
-EOT
+  {
+    printf 'VMID=%q\n' "$vmid"
+    printf 'VM_NAME=%q\n' "$vm_name"
+    printf 'VM_CORES=%q\n' "$vm_cores"
+    printf 'VM_RAM=%q\n' "$vm_ram"
+    printf 'VM_DISK_GB=%q\n' "$vm_disk"
+    printf 'VM_STORAGE=%q\n' "$vm_storage"
+    printf 'SNIPPETS_STORAGE=%q\n' "$snippets_storage"
+    printf 'VM_BRIDGE=%q\n' "$vm_bridge"
+    printf 'VLAN_TAG=%q\n' "$vlan_tag"
+    printf 'IP_MODE=%q\n' "$ip_mode"
+    printf 'IP_CIDR=%q\n' "$ip_cidr"
+    printf 'GATEWAY=%q\n' "$gateway"
+    printf 'DNS_SERVER=%q\n' "$dns_server"
+    printf 'CI_USER=%q\n' "$ci_user"
+    printf 'SSH_AUTH_MODE=%q\n' "$ssh_auth_mode"
+    printf 'SSH_PUBKEY_PATH=%q\n' "$ssh_pub"
+    printf 'SSH_PRIVATE_KEY_PATH=%q\n' "$ssh_priv"
+    printf 'CI_PASSWORD=%q\n' "$ci_password"
+    printf 'SSH_PORT=%q\n' "$ssh_port"
+    printf 'SELECTED_MODULES=%q\n' "$modules"
+    printf 'SELECTED_APPS=%q\n' "$apps"
+  } >"$output_file"
 }

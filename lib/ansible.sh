@@ -6,17 +6,9 @@ bootstrap_vm() {
   local ip="$1"
   local port="$2"
   local user="$3"
-  local key_path="$4"
-
-  [[ -f "$key_path" ]] || die "Private Key nicht gefunden: $key_path"
-
-  local ssh_opts=(
-    -o StrictHostKeyChecking=no
-    -o UserKnownHostsFile=/dev/null
-    -o ConnectTimeout=8
-    -i "$key_path"
-    -p "$port"
-  )
+  local auth_mode="$4"
+  local key_path="$5"
+  local password="$6"
 
   log_info "Bootstrappe VM (python3 + qemu-guest-agent)"
 
@@ -27,11 +19,38 @@ bootstrap_vm() {
 \$SUDO systemctl enable --now qemu-guest-agent; \
 \$SUDO systemctl is-active --quiet qemu-guest-agent"
 
-  if ! ssh "${ssh_opts[@]}" "${user}@${ip}" "$remote_cmd"; then
+  local rc=0
+  if [[ "$auth_mode" == "key" ]]; then
+    [[ -f "$key_path" ]] || die "Private Key nicht gefunden: $key_path"
+    ssh -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=8 \
+      -i "$key_path" \
+      -p "$port" \
+      "${user}@${ip}" "$remote_cmd" || rc=$?
+  else
+    [[ -n "$password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
+    sshpass -p "$password" ssh \
+      -o StrictHostKeyChecking=no \
+      -o UserKnownHostsFile=/dev/null \
+      -o ConnectTimeout=8 \
+      -o PreferredAuthentications=password \
+      -o PubkeyAuthentication=no \
+      -p "$port" \
+      "${user}@${ip}" "$remote_cmd" || rc=$?
+  fi
+
+  if [[ $rc -ne 0 ]]; then
     die "Bootstrap der VM fehlgeschlagen (python3/qemu-guest-agent konnte nicht eingerichtet werden)."
   fi
 
   log_info "qemu-guest-agent ist installiert und aktiv."
+}
+
+yaml_quote() {
+  local s="$1"
+  s="${s//\'/\'\'}"
+  printf "'%s'" "$s"
 }
 
 run_ansible() {
@@ -39,9 +58,11 @@ run_ansible() {
   local ip="$2"
   local port="$3"
   local user="$4"
-  local key_path="$5"
-  local selected_modules_csv="$6"
-  local selected_apps_csv="$7"
+  local auth_mode="$5"
+  local key_path="$6"
+  local password="$7"
+  local selected_modules_csv="$8"
+  local selected_apps_csv="$9"
 
   local work_dir
   work_dir="$(mktemp -d /tmp/proxmox-orchestrator-ansible-XXXX)"
@@ -49,11 +70,22 @@ run_ansible() {
   local inventory_file="$work_dir/inventory.ini"
   cat >"$inventory_file" <<EOT
 [targets]
-${ip} ansible_user=${user} ansible_ssh_private_key_file=${key_path} ansible_port=${port} ansible_python_interpreter=/usr/bin/python3
+${ip} ansible_user=${user} ansible_port=${port} ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 EOT
+
+  if [[ "$auth_mode" == "key" ]]; then
+    [[ -f "$key_path" ]] || die "Private Key nicht gefunden: $key_path"
+    sed -i "2s|\$| ansible_ssh_private_key_file=${key_path}|" "$inventory_file"
+  else
+    [[ -n "$password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
+  fi
 
   local vars_file="$work_dir/vars.yml"
   {
+    if [[ "$auth_mode" == "password" ]]; then
+      printf "ansible_password: %s\n" "$(yaml_quote "$password")"
+    fi
+
     echo "modules_selected:"
     if [[ -n "$selected_modules_csv" ]]; then
       local module
