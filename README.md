@@ -23,7 +23,9 @@ chmod +x orchestrator.sh
   - nur echte Bridge-Interfaces (`vmbr*`) in der Auswahl
   - optionaler VLAN-Tag
   - DHCP oder statische IP
-- SSH key-only (`Public/Private Key Pfad`)
+- SSH-Login:
+  - Key-Modus mit `Public/Private Key`
+  - Passwort-Modus, wenn der Public-Key-Pfad leer ist oder die Public-Key-Datei leer ist
 - Optionale Module (auch leer möglich)
 - Optionale Apps `docker` und `nginx` (auch leer möglich)
 - `qemu-guest-agent` wird immer installiert (nicht mehr als optionales Modul)
@@ -45,6 +47,7 @@ chmod +x orchestrator.sh
 - `jq`
 - `ansible-playbook`
 - `ssh`
+- `sshpass`
 - `nc`
 - `ping`
 - `ip`

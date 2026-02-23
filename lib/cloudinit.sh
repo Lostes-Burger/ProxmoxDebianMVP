@@ -115,7 +115,11 @@ resolve_vm_ip() {
     log_info "Warte auf DHCP-IP via qemu-guest-agent (VM ${vmid}) - Versuch ${attempt}"
     local vm_ip
     vm_ip="$(qm guest cmd "$vmid" network-get-interfaces 2>/dev/null \
-      | jq -r '.[] | .["ip-addresses"][]? | select(.["ip-address-type"]=="ipv4") | .["ip-address"]' \
+      | jq -r '.[] 
+        | select(((.name // "") | test("^lo") | not))
+        | .["ip-addresses"][]? 
+        | select(.["ip-address-type"]=="ipv4") 
+        | .["ip-address"]' \
       | sed 's/[[:space:]]//g' \
       | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' \
       | grep -Ev '^(127\\.|169\\.254\\.|0\\.|255\\.)' \
