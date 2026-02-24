@@ -205,19 +205,85 @@
     - uos_download_url_override is defined
     - (uos_download_url_override | trim | length) > 0
 
+- name: Probe latest UniFi OS Server installer from fw-download index
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://fw-download.ubnt.com/data/unifi-os-server/ \
+      | tr '"'"'"'"'"' '\n' \
+      | grep -E 'unifi[-_.]?os[-_.]?server|uosserver' \
+      | grep -E 'linux[-_.]?(x64|amd64)|amd64|x64' \
+      | grep -E '\.(deb|bin|run|sh)(\?|$)|linux[-_.]?(x64|amd64)$' \
+      | sort -rV \
+      | head -n 1
+  register: uos_fw_index_probe
+  changed_when: false
+  failed_when: false
+  when: uos_download_url | length == 0
+
+- name: Use fw-download probe result as UniFi OS Server URL
+  ansible.builtin.set_fact:
+    uos_download_url: >-
+      {{
+        (
+          uos_fw_index_probe.stdout
+          if (uos_fw_index_probe.stdout is search('^https?://'))
+          else (
+            'https://fw-download.ubnt.com/data/unifi-os-server/'
+            ~ (uos_fw_index_probe.stdout | regex_replace('^/+', ''))
+          )
+        )
+      }}
+  when:
+    - uos_download_url | length == 0
+    - (uos_fw_index_probe.stdout | default('') | trim | length) > 0
+
+- name: Probe latest UniFi OS Server installer from dl.ui.com index
+  ansible.builtin.shell: |
+    set -o pipefail
+    curl -fsSL https://dl.ui.com/ \
+      | tr '"' '\n' \
+      | grep -E 'unifi[-_.]?os[-_.]?server|uosserver' \
+      | grep -E 'linux[-_.]?(x64|amd64)|amd64|x64' \
+      | grep -E '\.(deb|bin|run|sh)(\?|$)|linux[-_.]?(x64|amd64)$' \
+      | sort -rV \
+      | head -n 1
+  register: uos_dl_index_probe
+  changed_when: false
+  failed_when: false
+  when: uos_download_url | length == 0
+
+- name: Use dl.ui.com probe result as UniFi OS Server URL
+  ansible.builtin.set_fact:
+    uos_download_url: >-
+      {{
+        (
+          uos_dl_index_probe.stdout
+          if (uos_dl_index_probe.stdout is search('^https?://'))
+          else (
+            'https://dl.ui.com/'
+            ~ (uos_dl_index_probe.stdout | regex_replace('^/+', ''))
+          )
+        )
+      }}
+  when:
+    - uos_download_url | length == 0
+    - (uos_dl_index_probe.stdout | default('') | trim | length) > 0
+
 - name: Set UniFi OS Server install flags
   ansible.builtin.set_fact:
     uos_install_available: "{{ uos_download_url | length > 0 }}"
     uos_download_is_deb: "{{ (uos_download_url | lower) is search('\\.deb(?:\\?|$)') }}"
 
-- name: Warn when no UniFi OS Server installer URL was found
-  ansible.builtin.debug:
-    msg: >-
-      Keine UniFi OS Server Installer-URL automatisch gefunden.
+- name: Ensure UniFi OS Server installer URL was found
+  ansible.builtin.assert:
+    that:
+      - uos_install_available
+    fail_msg: >-
+      Konnte keine UniFi OS Server Installer-URL automatisch finden.
       Gepruefte Metadata-URLs: {{ uos_metadata_url_candidates | length }}.
-      Gefundene Kandidaten: {{ uos_download_candidates | length }}.
-      Setze optional uos_download_url_override auf eine direkte Linux-x64 URL.
-  when: not uos_install_available
+      Gefundene Regex-Kandidaten: {{ uos_download_candidates | length }}.
+      fw-download-Probe: {{ (((uos_fw_index_probe | default({})).stdout | default('')) | trim) or 'leer' }}.
+      dl.ui.com-Probe: {{ (((uos_dl_index_probe | default({})).stdout | default('')) | trim) or 'leer' }}.
 
 - name: Set local paths for UniFi OS Server package
   ansible.builtin.set_fact:
