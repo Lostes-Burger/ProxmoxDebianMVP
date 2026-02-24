@@ -111,7 +111,7 @@ wait_for_ssh() {
     log_info "Warte auf SSH-Login (${user}@${ip}:${port}, mode=${auth_mode}) - Versuch ${attempt}"
 
     local rc=1
-    if [[ "$auth_mode" == "key" ]]; then
+    if [[ "$auth_mode" == "key_path" || "$auth_mode" == "key_manual" ]]; then
       if [[ -f "$key_path" ]]; then
         if ssh -o BatchMode=yes \
           -o StrictHostKeyChecking=no \

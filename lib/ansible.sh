@@ -20,7 +20,7 @@ bootstrap_vm() {
 \$SUDO systemctl is-active --quiet qemu-guest-agent"
 
   local rc=0
-  if [[ "$auth_mode" == "key" ]]; then
+  if [[ "$auth_mode" == "key_path" || "$auth_mode" == "key_manual" ]]; then
     [[ -f "$key_path" ]] || die "Private Key nicht gefunden: $key_path"
     ssh -o StrictHostKeyChecking=no \
       -o UserKnownHostsFile=/dev/null \
@@ -73,7 +73,7 @@ run_ansible() {
 ${ip} ansible_user=${user} ansible_port=${port} ansible_python_interpreter=/usr/bin/python3 ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
 EOT
 
-  if [[ "$auth_mode" == "key" ]]; then
+  if [[ "$auth_mode" == "key_path" || "$auth_mode" == "key_manual" ]]; then
     [[ -f "$key_path" ]] || die "Private Key nicht gefunden: $key_path"
     sed -i "2s|\$| ansible_ssh_private_key_file=${key_path}|" "$inventory_file"
   else

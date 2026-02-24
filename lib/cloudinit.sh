@@ -34,14 +34,15 @@ storage_has_content_type() {
 configure_cloud_init_userdata() {
   local vmid="$1"
   local snippets_storage="$2"
-  local ssh_auth_mode="$3"
+  local ansible_auth_mode="$3"
   local ci_user="$4"
-  local ssh_pubkey_path="$5"
-  local ci_password="$6"
-  local root_auth_mode="$7"
-  local root_ssh_key_path="$8"
-  local root_ssh_key_text="$9"
-  local root_password="${10}"
+  local ansible_ssh_key_path="$5"
+  local ansible_ssh_key_text="$6"
+  local ansible_password="$7"
+  local root_auth_mode="$8"
+  local root_ssh_key_path="$9"
+  local root_ssh_key_text="${10}"
+  local root_password="${11}"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
   if ! storage_has_content_type "$snippets_storage" "snippets"; then
@@ -59,7 +60,7 @@ configure_cloud_init_userdata() {
   local root_ssh_cfg=""
   local ci_ssh_pwauth="false"
 
-  if [[ "$ssh_auth_mode" == "password" ]]; then
+  if [[ "$ansible_auth_mode" == "password" ]]; then
     ci_ssh_pwauth="true"
   fi
 
@@ -104,25 +105,40 @@ EOT
       die "Ungültige Root Auth Auswahl: $root_auth_mode"
       ;;
   esac
-  if [[ "$ssh_auth_mode" == "key" ]]; then
-    [[ -s "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden oder leer: $ssh_pubkey_path"
-    local ssh_key
-    ssh_key="$(tr -d '\r\n' <"$ssh_pubkey_path")"
-    [[ -n "$ssh_key" ]] || die "Public Key ist leer: $ssh_pubkey_path"
-
-    user_block=$(cat <<EOT
+  local ansible_ssh_key=""
+  case "$ansible_auth_mode" in
+    key_path)
+      [[ -s "$ansible_ssh_key_path" ]] || die "Public Key nicht gefunden oder leer: $ansible_ssh_key_path"
+      ansible_ssh_key="$(tr -d '\r\n' <"$ansible_ssh_key_path")"
+      [[ "$ansible_ssh_key" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger Public Key für $ci_user."
+      user_block=$(cat <<EOT
   - name: ${ci_user}
     shell: /bin/bash
     groups: sudo
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: true
     ssh_authorized_keys:
-      - ${ssh_key}
+      - ${ansible_ssh_key}
 EOT
 )
-  else
-    [[ -n "$ci_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
-    user_block=$(cat <<EOT
+      ;;
+    key_manual)
+      ansible_ssh_key="$(printf '%s' "$ansible_ssh_key_text" | tr -d '\r\n')"
+      [[ "$ansible_ssh_key" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger manueller Public Key für $ci_user."
+      user_block=$(cat <<EOT
+  - name: ${ci_user}
+    shell: /bin/bash
+    groups: sudo
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${ansible_ssh_key}
+EOT
+)
+      ;;
+    password)
+      [[ -n "$ansible_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
+      user_block=$(cat <<EOT
   - name: ${ci_user}
     shell: /bin/bash
     groups: sudo
@@ -130,11 +146,15 @@ EOT
     lock_passwd: false
 EOT
 )
-  fi
+      ;;
+    *)
+      die "Ungültige Auth Auswahl für $ci_user: $ansible_auth_mode"
+      ;;
+  esac
 
   local chpasswd_block=""
-  if [[ "$ssh_auth_mode" == "password" ]]; then
-    chpasswd_block+="${ci_user}:${ci_password}"$'\n'
+  if [[ "$ansible_auth_mode" == "password" ]]; then
+    chpasswd_block+="${ci_user}:${ansible_password}"$'\n'
   fi
   if [[ "$root_auth_mode" == "password" ]]; then
     chpasswd_block+="root:${root_password}"$'\n'
@@ -189,17 +209,18 @@ configure_cloud_init() {
   local vm_storage="$2"
   local snippets_storage="$3"
   local ci_user="$4"
-  local ssh_auth_mode="$5"
-  local ssh_pubkey_path="$6"
-  local ci_password="$7"
-  local root_auth_mode="$8"
-  local root_ssh_key_path="$9"
-  local root_ssh_key_text="${10}"
-  local root_password="${11}"
-  local ip_mode="${12}"
-  local ip_cidr="${13}"
-  local gateway="${14}"
-  local dns_server="${15}"
+  local ansible_auth_mode="$5"
+  local ansible_ssh_key_path="$6"
+  local ansible_ssh_key_text="$7"
+  local ansible_password="$8"
+  local root_auth_mode="$9"
+  local root_ssh_key_path="${10}"
+  local root_ssh_key_text="${11}"
+  local root_password="${12}"
+  local ip_mode="${13}"
+  local ip_cidr="${14}"
+  local gateway="${15}"
+  local dns_server="${16}"
 
   local ipconfig="ip=dhcp"
   if [[ "$ip_mode" == "static" ]]; then
@@ -207,7 +228,7 @@ configure_cloud_init() {
   fi
 
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode" "$ci_user" "$ssh_pubkey_path" "$ci_password" "$root_auth_mode" "$root_ssh_key_path" "$root_ssh_key_text" "$root_password"
+  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ansible_auth_mode" "$ci_user" "$ansible_ssh_key_path" "$ansible_ssh_key_text" "$ansible_password" "$root_auth_mode" "$root_ssh_key_path" "$root_ssh_key_text" "$root_password"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null

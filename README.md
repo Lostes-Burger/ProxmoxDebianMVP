@@ -24,9 +24,9 @@ chmod +x orchestrator.sh
   - optionaler VLAN-Tag
   - DHCP oder statische IP
 - SSH-Login:
-  - Key-Modus mit `Public/Private Key`
-  - Passwort-Modus, wenn der Public-Key-Pfad leer ist oder die Public-Key-Datei leer ist
-  - Login erfolgt mit dem gewählten Cloud-Init-Benutzer (z. B. `debian`), nicht mit `root`
+  - Feld für Ansible-Benutzername (Default `debian`)
+  - Danach Auth-Auswahl für den Ansible-Benutzer: `SSH Key Path` / `manueller SSH Key` / `Passwort`
+  - Dieser Benutzer wird für SSH, Bootstrap und Ansible genutzt
 - Root-Login:
   - Auswahl: `SSH Key Path` / `manueller SSH Key` / `Passwort`
   - Root-Zugang wird direkt via Cloud-Init konfiguriert

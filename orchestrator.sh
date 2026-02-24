@@ -36,17 +36,17 @@ main() {
     "$VMID" "$VM_NAME" "$VM_CORES" "$VM_RAM" "$VM_DISK_GB" "$VM_STORAGE" "$VM_BRIDGE" "$VLAN_TAG" "$image_path"
 
   configure_cloud_init \
-    "$VMID" "$VM_STORAGE" "$SNIPPETS_STORAGE" "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PUBKEY_PATH" "$CI_PASSWORD" "$ROOT_AUTH_MODE" "$ROOT_SSH_KEY_PATH" "$ROOT_SSH_KEY_TEXT" "$ROOT_PASSWORD" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
+    "$VMID" "$VM_STORAGE" "$SNIPPETS_STORAGE" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_SSH_KEY_PATH" "$ANSIBLE_SSH_KEY_TEXT" "$ANSIBLE_PASSWORD" "$ROOT_AUTH_MODE" "$ROOT_SSH_KEY_PATH" "$ROOT_SSH_KEY_TEXT" "$ROOT_PASSWORD" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
 
   start_vm "$VMID"
 
   local target_ip
   target_ip="$(resolve_vm_ip "$VMID" "$IP_MODE" "$IP_CIDR")"
-  wait_for_ssh "$target_ip" "$SSH_PORT" 300 3 "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PRIVATE_KEY_PATH" "$CI_PASSWORD"
+  wait_for_ssh "$target_ip" "$SSH_PORT" 300 3 "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD"
 
-  bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PRIVATE_KEY_PATH" "$CI_PASSWORD"
+  bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD"
 
-  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$SSH_AUTH_MODE" "$SSH_PRIVATE_KEY_PATH" "$CI_PASSWORD" "$SELECTED_MODULES" "$SELECTED_APPS"
+  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD" "$SELECTED_MODULES" "$SELECTED_APPS"
 
   whiptail --title "Fertig" --msgbox "Provisionierung abgeschlossen.\n\nVM: ${VM_NAME} (${VMID})\nIP: ${target_ip}" 12 70
   log_info "Provisionierung erfolgreich abgeschlossen"

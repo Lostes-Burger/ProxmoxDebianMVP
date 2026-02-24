@@ -8,17 +8,16 @@
     update_cache: true
 
 - name: Fetch UniFi OS Server releases page
-  ansible.builtin.uri:
-    url: https://www.ui.com/download/releases/unifi-os-server
-    return_content: true
-    validate_certs: true
+  ansible.builtin.command:
+    cmd: curl -fsSL https://www.ui.com/download/releases/unifi-os-server
   register: uos_release_page
+  changed_when: false
 
 - name: Extract latest UniFi OS Server Linux x64 deb URL
   ansible.builtin.set_fact:
     uos_download_url: >-
       {{
-        (uos_release_page.content
+        (uos_release_page.stdout
         | regex_findall('https://fw-download\\.ubnt\\.com/data/unifi-os-server/[^"''\\s<>]*linux-x64[^"''\\s<>]*\\.deb')
         | first)
         | default('')

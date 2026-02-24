@@ -363,7 +363,51 @@ collect_wizard_config() {
   fi
 
   local ci_user
-  ci_user="$(whiptail --inputbox "Cloud-Init Benutzer" 10 60 "debian" 3>&1 1>&2 2>&3)"
+  ci_user="$(whiptail --inputbox "Ansible Benutzername (Cloud-Init User)" 11 80 "debian" 3>&1 1>&2 2>&3)"
+  [[ -n "$ci_user" ]] || die "Ansible Benutzername darf nicht leer sein."
+  [[ "$ci_user" != "root" ]] || die "Ansible Benutzername darf nicht 'root' sein."
+
+  whiptail --title "Hinweis Ansible Nutzer" --msgbox \
+    "Dieser Benutzer wird für SSH, Bootstrap und Ansible verwendet.\nEr bekommt sudo-Rechte in der VM." \
+    12 80
+
+  local ansible_auth_mode
+  ansible_auth_mode="$(whiptail --title "Ansible Benutzer Auth" --radiolist "Authentifizierung für Benutzer '$ci_user' auswählen" 16 80 3 \
+    "key_path" "SSH Key aus Datei-Pfad" ON \
+    "key_manual" "SSH Key manuell einfügen" OFF \
+    "password" "Passwort" OFF \
+    3>&1 1>&2 2>&3)"
+
+  local ansible_ssh_key_path=""
+  local ansible_ssh_key_text=""
+  local ansible_private_key_path=""
+  local ansible_password=""
+
+  case "$ansible_auth_mode" in
+    key_path)
+      ansible_ssh_key_path="$(whiptail --inputbox "Pfad zum Public Key für '$ci_user'" 10 90 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
+      [[ -s "$ansible_ssh_key_path" ]] || die "Public Key nicht gefunden oder leer: $ansible_ssh_key_path"
+      ansible_private_key_path="$(whiptail --inputbox "Pfad zum passenden Private Key für '$ci_user'" 10 90 "$HOME/.ssh/id_rsa" 3>&1 1>&2 2>&3)"
+      [[ -n "$ansible_private_key_path" ]] || die "Private Key Pfad darf nicht leer sein."
+      ;;
+    key_manual)
+      ansible_ssh_key_text="$(whiptail --inputbox "Public SSH Key für '$ci_user' einfügen (eine Zeile)" 14 100 "" 3>&1 1>&2 2>&3)"
+      [[ "$ansible_ssh_key_text" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger manueller SSH Key für $ci_user."
+      ansible_private_key_path="$(whiptail --inputbox "Pfad zum passenden Private Key für '$ci_user'" 10 90 "$HOME/.ssh/id_rsa" 3>&1 1>&2 2>&3)"
+      [[ -n "$ansible_private_key_path" ]] || die "Private Key Pfad darf nicht leer sein."
+      ;;
+    password)
+      local pass1 pass2
+      pass1="$(whiptail --passwordbox "Passwort für Benutzer '$ci_user' setzen" 11 80 3>&1 1>&2 2>&3)"
+      pass2="$(whiptail --passwordbox "Passwort bestätigen" 10 60 3>&1 1>&2 2>&3)"
+      [[ -n "$pass1" ]] || die "Passwort darf nicht leer sein."
+      [[ "$pass1" == "$pass2" ]] || die "Passwörter stimmen nicht überein."
+      ansible_password="$pass1"
+      ;;
+    *)
+      die "Ungültige Auth-Auswahl für Ansible Nutzer: $ansible_auth_mode"
+      ;;
+  esac
 
   local root_auth_mode
   root_auth_mode="$(whiptail --title "Root Login" --radiolist "Root-Authentifizierung auswählen" 16 80 3 \
@@ -398,36 +442,6 @@ collect_wizard_config() {
       ;;
   esac
 
-  local ssh_pub
-  ssh_pub="$(whiptail --inputbox "Pfad zum Public Key (leer = Passwortmodus)" 11 80 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
-
-  local ssh_auth_mode=""
-  local ssh_priv=""
-  local ci_password=""
-
-  if [[ -n "$ssh_pub" ]]; then
-    [[ -e "$ssh_pub" ]] || die "Public Key Datei nicht gefunden: $ssh_pub"
-    if [[ -s "$ssh_pub" ]]; then
-      ssh_auth_mode="key"
-      ssh_priv="$(whiptail --inputbox "Pfad zum Private Key" 10 70 "$HOME/.ssh/id_rsa" 3>&1 1>&2 2>&3)"
-      [[ -n "$ssh_priv" ]] || die "Private Key Pfad darf nicht leer sein."
-    else
-      ssh_auth_mode="password"
-      ssh_pub=""
-    fi
-  else
-    ssh_auth_mode="password"
-  fi
-
-  if [[ "$ssh_auth_mode" == "password" ]]; then
-    local pass1 pass2
-    pass1="$(whiptail --passwordbox "Public Key leer. Bitte Passwort für Benutzer '$ci_user' setzen" 12 80 3>&1 1>&2 2>&3)"
-    pass2="$(whiptail --passwordbox "Passwort bestätigen" 10 60 3>&1 1>&2 2>&3)"
-    [[ -n "$pass1" ]] || die "Passwort darf nicht leer sein."
-    [[ "$pass1" == "$pass2" ]] || die "Passwörter stimmen nicht überein."
-    ci_password="$pass1"
-  fi
-
   local ssh_port="22"
 
   local modules
@@ -448,9 +462,8 @@ Bridge: $vm_bridge
 VLAN: ${vlan_tag:-untagged}
 IP-Modus: $ip_mode
 User: $ci_user
+Ansible Auth: $ansible_auth_mode
 Root Auth: $root_auth_mode
-SSH Key: $ssh_pub
-SSH Auth: $ssh_auth_mode
 Module: ${modules:-keine}
 Apps: ${apps:-keine}
 EOT
@@ -475,14 +488,15 @@ EOT
     printf 'GATEWAY=%q\n' "$gateway"
     printf 'DNS_SERVER=%q\n' "$dns_server"
     printf 'CI_USER=%q\n' "$ci_user"
+    printf 'ANSIBLE_AUTH_MODE=%q\n' "$ansible_auth_mode"
+    printf 'ANSIBLE_SSH_KEY_PATH=%q\n' "$ansible_ssh_key_path"
+    printf 'ANSIBLE_SSH_KEY_TEXT=%q\n' "$ansible_ssh_key_text"
+    printf 'ANSIBLE_PRIVATE_KEY_PATH=%q\n' "$ansible_private_key_path"
+    printf 'ANSIBLE_PASSWORD=%q\n' "$ansible_password"
     printf 'ROOT_AUTH_MODE=%q\n' "$root_auth_mode"
     printf 'ROOT_SSH_KEY_PATH=%q\n' "$root_ssh_key_path"
     printf 'ROOT_SSH_KEY_TEXT=%q\n' "$root_ssh_key_text"
     printf 'ROOT_PASSWORD=%q\n' "$root_password"
-    printf 'SSH_AUTH_MODE=%q\n' "$ssh_auth_mode"
-    printf 'SSH_PUBKEY_PATH=%q\n' "$ssh_pub"
-    printf 'SSH_PRIVATE_KEY_PATH=%q\n' "$ssh_priv"
-    printf 'CI_PASSWORD=%q\n' "$ci_password"
     printf 'SSH_PORT=%q\n' "$ssh_port"
     printf 'SELECTED_MODULES=%q\n' "$modules"
     printf 'SELECTED_APPS=%q\n' "$apps"
