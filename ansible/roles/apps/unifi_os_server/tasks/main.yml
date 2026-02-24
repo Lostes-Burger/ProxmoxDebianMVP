@@ -23,17 +23,60 @@
         | regex_replace('\\\\u0026', '&')
       }}
 
+- name: Extract UniFi OS Server metadata URL candidates
+  ansible.builtin.set_fact:
+    uos_metadata_url_candidates: >-
+      {{
+        (
+          uos_release_page_normalized
+          | regex_findall('https://[^\"''\\s<>]*(?:\\.json|\\.js)(?:\\?[^\"''\\s<>]*)?')
+        )
+        +
+        (
+          uos_release_page_normalized
+          | regex_findall('/(?:_next|_nuxt|assets|download|releases)[^\"''\\s<>]*(?:\\.json|\\.js)(?:\\?[^\"''\\s<>]*)?')
+          | map('regex_replace', '^(.*)$', 'https://www.ui.com\\1')
+          | list
+        )
+      | unique
+      }}
+
+- name: Fetch UniFi OS Server metadata pages
+  ansible.builtin.command:
+    cmd: "curl -fsSL {{ item | quote }}"
+  loop: "{{ uos_metadata_url_candidates[:30] }}"
+  register: uos_metadata_pages
+  changed_when: false
+  failed_when: false
+
+- name: Combine UniFi OS Server release and metadata content
+  ansible.builtin.set_fact:
+    uos_release_content_combined: >-
+      {{
+        (
+          [uos_release_page_normalized]
+          +
+          (
+            (uos_metadata_pages.results | default([]))
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='stdout')
+            | list
+          )
+        )
+        | join('\n')
+      }}
+
 - name: Extract UniFi OS Server deb URL candidates
   ansible.builtin.set_fact:
     uos_download_candidates: >-
       {{
         (
-          uos_release_page_normalized
+          uos_release_content_combined
           | regex_findall('https://[^\"''\\s<>]*\\.deb(?:\\?[^\"''\\s<>]*)?')
         )
         +
         (
-          uos_release_page_normalized
+          uos_release_content_combined
           | regex_findall('https:\\\\/\\\\/[^\"''\\s<>]*\\.deb(?:\\?[^\"''\\s<>]*)?')
           | map('regex_replace', '^https:\\\\/\\\\/', 'https://')
           | map('regex_replace', '\\\\/', '/')
@@ -41,7 +84,14 @@
         )
         +
         (
-          uos_release_page_normalized
+          uos_release_content_combined
+          | regex_findall('//fw-download\\.ubnt\\.com/[^\"''\\s<>]*\\.deb')
+          | map('regex_replace', '^(.*)$', 'https:\\1')
+          | list
+        )
+        +
+        (
+          uos_release_content_combined
           | regex_findall('fw-download\\.ubnt\\.com/data/unifi-os-server/[^\"''\\s<>]*\\.deb')
           | map('regex_replace', '^(.*)$', 'https://\\1')
           | list
@@ -98,11 +148,21 @@
         | default('', true)
       }}
 
+- name: Override UniFi OS Server download URL when provided
+  ansible.builtin.set_fact:
+    uos_download_url: "{{ uos_download_url_override | trim }}"
+  when:
+    - uos_download_url_override is defined
+    - (uos_download_url_override | trim | length) > 0
+
 - name: Ensure UniFi OS Server URL was found
   ansible.builtin.assert:
     that:
       - uos_download_url | length > 0
-    fail_msg: "Konnte keine UniFi OS Server Linux-x64 .deb URL auf ui.com finden."
+    fail_msg: >-
+      Konnte keine UniFi OS Server Linux-x64 .deb URL auf ui.com finden.
+      Gepruefte Metadata-URLs: {{ uos_metadata_url_candidates | length }}.
+      Gefundene .deb-Kandidaten: {{ uos_download_candidates | length }}.
 
 - name: Set local paths for UniFi OS Server package
   ansible.builtin.set_fact:
