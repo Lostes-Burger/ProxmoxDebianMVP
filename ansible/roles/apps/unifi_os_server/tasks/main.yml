@@ -19,6 +19,66 @@
 - name: Run UniFi OS Server community installer script
   ansible.builtin.command:
     cmd: "/tmp/install_uosserver.sh"
+  register: uos_script_run
+  changed_when: true
+  failed_when: false
+
+- name: Set UniFi OS Server installer compatibility fallback flag
+  ansible.builtin.set_fact:
+    uos_needs_compat_fallback: >-
+      {{
+        (uos_script_run.rc | int != 0)
+        and
+        (
+          (
+            (uos_script_run.stderr | default(''))
+            ~ '\n'
+            ~ (uos_script_run.stdout | default(''))
+          )
+          is search('unknown argument: install')
+        )
+      }}
+
+- name: Fail when community installer script failed for another reason
+  ansible.builtin.fail:
+    msg: >-
+      install_uosserver.sh failed (rc={{ uos_script_run.rc }}).
+      stderr: {{ (uos_script_run.stderr | default('') | trim) or 'leer' }}
+  when:
+    - uos_script_run.rc | int != 0
+    - not uos_needs_compat_fallback
+
+- name: Find downloaded UniFi OS Server binary for compatibility fallback
+  ansible.builtin.shell: |
+    ls -1t /home/*/*linux-x64* /tmp/*linux-x64* 2>/dev/null | head -n 1
+  args:
+    executable: /bin/bash
+  register: uos_binary_path
+  changed_when: false
+  when: uos_needs_compat_fallback
+
+- name: Ensure UniFi OS Server fallback binary was found
+  ansible.builtin.assert:
+    that:
+      - (uos_binary_path.stdout | default('') | trim | length) > 0
+    fail_msg: "Community script failed with 'unknown argument: install', but no downloaded linux-x64 installer binary was found."
+  when: uos_needs_compat_fallback
+
+- name: Set execute permission on UniFi OS Server fallback binary
+  ansible.builtin.file:
+    path: "{{ uos_binary_path.stdout | trim }}"
+    mode: "0755"
+  when: uos_needs_compat_fallback
+
+- name: Run UniFi OS Server fallback binary directly
+  ansible.builtin.shell: |
+    set -o pipefail
+    yes y | {{ (uos_binary_path.stdout | trim) | quote }}
+  args:
+    executable: /bin/bash
+  register: uos_binary_run
+  changed_when: true
+  when: uos_needs_compat_fallback
 
 - name: Ensure UniFi OS Server service is running (if present)
   ansible.builtin.systemd:
