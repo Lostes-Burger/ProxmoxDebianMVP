@@ -65,6 +65,6 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 - Bei DHCP wird die IP automatisch über `qemu-guest-agent` ermittelt (kein manueller IP-Prompt mehr).
 - VM-Disk und Cloud-Init-Snippets können auf unterschiedlichen Storages liegen (z. B. VM auf `bigdata`, Snippets auf `local`).
 - Neue VMs werden ohne erzwungenen Serial-Display-Modus erstellt.
-- `unifi_os_server` zieht bei Auswahl die aktuelle Linux-x64-`.deb` von `ui.com/download/releases/unifi-os-server`.
-- Optional kann `uos_download_url_override` gesetzt werden, um eine feste UniFi-OS-Server-`.deb`-URL zu erzwingen.
+- `unifi_os_server` zieht bei Auswahl automatisch einen Linux-x64-Installer von `ui.com`/`ubnt` (falls auffindbar), als `.deb` oder Binary.
+- Optional kann `uos_download_url_override` gesetzt werden, um eine feste UniFi-OS-Server-Installer-URL zu erzwingen.
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).

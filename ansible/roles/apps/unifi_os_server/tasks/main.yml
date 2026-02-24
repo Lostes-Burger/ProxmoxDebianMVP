@@ -43,8 +43,10 @@
 
 - name: Fetch UniFi OS Server metadata pages
   ansible.builtin.command:
-    cmd: "curl -fsSL {{ item | quote }}"
+    cmd: "curl -fsSL {{ uos_metadata_url | quote }}"
   loop: "{{ uos_metadata_url_candidates[:30] }}"
+  loop_control:
+    loop_var: uos_metadata_url
   register: uos_metadata_pages
   changed_when: false
   failed_when: false
@@ -77,8 +79,10 @@
 
 - name: Fetch UniFi OS Server fallback sources
   ansible.builtin.command:
-    cmd: "curl -fsSL {{ item | quote }}"
+    cmd: "curl -fsSL {{ uos_fallback_url | quote }}"
   loop: "{{ uos_fallback_source_urls }}"
+  loop_control:
+    loop_var: uos_fallback_url
   register: uos_fallback_sources
   changed_when: false
   failed_when: false
@@ -100,7 +104,7 @@
         | join('\n')
       }}
 
-- name: Extract UniFi OS Server deb URL candidates
+- name: Extract UniFi OS Server installer URL candidates
   ansible.builtin.set_fact:
     uos_download_candidates: >-
       {{
@@ -114,6 +118,18 @@
           | regex_findall('https:\\\\/\\\\/[^\"''\\s<>]*\\.deb(?:\\?[^\"''\\s<>]*)?')
           | map('regex_replace', '^https:\\\\/\\\\/', 'https://')
           | map('regex_replace', '\\\\/', '/')
+          | list
+        )
+        +
+        (
+          uos_release_content_combined
+          | regex_findall('https://fw-download\\.ubnt\\.com/data/unifi-os-server/[^\"''\\s<>]*')
+        )
+        +
+        (
+          uos_release_content_combined
+          | regex_findall('//fw-download\\.ubnt\\.com/data/unifi-os-server/[^\"''\\s<>]*')
+          | map('regex_replace', '^(.*)$', 'https:\\1')
           | list
         )
         +
@@ -189,20 +205,31 @@
     - uos_download_url_override is defined
     - (uos_download_url_override | trim | length) > 0
 
-- name: Ensure UniFi OS Server URL was found
-  ansible.builtin.assert:
-    that:
-      - uos_download_url | length > 0
-    fail_msg: >-
-      Konnte keine UniFi OS Server Linux-x64 .deb URL auf ui.com finden.
+- name: Set UniFi OS Server install flags
+  ansible.builtin.set_fact:
+    uos_install_available: "{{ uos_download_url | length > 0 }}"
+    uos_download_is_deb: "{{ (uos_download_url | lower) is search('\\.deb(?:\\?|$)') }}"
+
+- name: Warn when no UniFi OS Server installer URL was found
+  ansible.builtin.debug:
+    msg: >-
+      Keine UniFi OS Server Installer-URL automatisch gefunden.
       Gepruefte Metadata-URLs: {{ uos_metadata_url_candidates | length }}.
-      Gefundene .deb-Kandidaten: {{ uos_download_candidates | length }}.
-      Optional: setze uos_download_url_override auf eine direkte .deb URL.
+      Gefundene Kandidaten: {{ uos_download_candidates | length }}.
+      Setze optional uos_download_url_override auf eine direkte Linux-x64 URL.
+  when: not uos_install_available
 
 - name: Set local paths for UniFi OS Server package
   ansible.builtin.set_fact:
-    uos_deb_path: "/tmp/{{ uos_download_url | basename }}"
     uos_marker_path: "/var/lib/unifi-os-server/.orchestrator_last_url"
+    uos_installer_path: >-
+      {{
+        (
+          "/tmp/" ~ ((uos_download_url | regex_replace('\\?.*$', '')) | basename)
+        )
+        if uos_install_available
+        else ''
+      }}
 
 - name: Ensure marker directory exists
   ansible.builtin.file:
@@ -227,21 +254,45 @@
 
 - name: Download latest UniFi OS Server package
   ansible.builtin.command:
-    cmd: "curl -fL {{ uos_download_url }} -o {{ uos_deb_path }}"
-  when: uos_current_url != uos_download_url
+    cmd: "curl -fL {{ uos_download_url | quote }} -o {{ uos_installer_path | quote }}"
+  when:
+    - uos_install_available
+    - uos_current_url != uos_download_url
 
-- name: Install UniFi OS Server package
+- name: Install UniFi OS Server .deb package
   ansible.builtin.apt:
-    deb: "{{ uos_deb_path }}"
+    deb: "{{ uos_installer_path }}"
     state: present
-  when: uos_current_url != uos_download_url
+  when:
+    - uos_install_available
+    - uos_download_is_deb
+    - uos_current_url != uos_download_url
+
+- name: Make UniFi OS Server binary installer executable
+  ansible.builtin.file:
+    path: "{{ uos_installer_path }}"
+    mode: "0755"
+  when:
+    - uos_install_available
+    - not uos_download_is_deb
+    - uos_current_url != uos_download_url
+
+- name: Run UniFi OS Server binary installer
+  ansible.builtin.command:
+    cmd: "{{ uos_installer_path | quote }}"
+  when:
+    - uos_install_available
+    - not uos_download_is_deb
+    - uos_current_url != uos_download_url
 
 - name: Update UniFi OS Server URL marker
   ansible.builtin.copy:
     content: "{{ uos_download_url }}\n"
     dest: "{{ uos_marker_path }}"
     mode: "0644"
-  when: uos_current_url != uos_download_url
+  when:
+    - uos_install_available
+    - uos_current_url != uos_download_url
 
 - name: Ensure UniFi OS Server service is running (if present)
   ansible.builtin.systemd:
