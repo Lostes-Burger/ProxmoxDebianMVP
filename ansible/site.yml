@@ -67,6 +67,62 @@
         enabled: true
       when: "'unattended_upgrades' in (modules_selected | default([]))"
 
+    - name: Check existing sysctl hardening config
+      ansible.builtin.stat:
+        path: /etc/sysctl.d/99-orchestrator-hardening.conf
+      register: sysctl_hardening_conf_stat
+      when: "'sysctl_hardening' in (modules_selected | default([]))"
+
+    - name: Backup existing sysctl hardening config once
+      ansible.builtin.copy:
+        src: /etc/sysctl.d/99-orchestrator-hardening.conf
+        dest: /etc/sysctl.d/99-orchestrator-hardening.conf.bak
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+        force: false
+      when:
+        - "'sysctl_hardening' in (modules_selected | default([]))"
+        - sysctl_hardening_conf_stat.stat.exists
+
+    - name: Write conservative sysctl hardening profile
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-orchestrator-hardening.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          # Managed by Proxmox Debian VM Orchestrator
+          net.ipv4.conf.all.accept_redirects=0
+          net.ipv4.conf.default.accept_redirects=0
+          net.ipv4.conf.all.secure_redirects=0
+          net.ipv4.conf.default.secure_redirects=0
+          net.ipv4.conf.all.send_redirects=0
+          net.ipv4.conf.default.send_redirects=0
+          net.ipv4.conf.all.accept_source_route=0
+          net.ipv4.conf.default.accept_source_route=0
+          net.ipv4.icmp_echo_ignore_broadcasts=1
+          net.ipv4.icmp_ignore_bogus_error_responses=1
+          net.ipv4.tcp_syncookies=1
+          net.ipv4.conf.all.rp_filter=1
+          net.ipv4.conf.default.rp_filter=1
+          net.ipv6.conf.all.accept_redirects=0
+          net.ipv6.conf.default.accept_redirects=0
+          kernel.kptr_restrict=2
+          kernel.dmesg_restrict=1
+          fs.protected_hardlinks=1
+          fs.protected_symlinks=1
+      register: sysctl_hardening_conf
+      when: "'sysctl_hardening' in (modules_selected | default([]))"
+
+    - name: Apply sysctl hardening profile
+      ansible.builtin.command:
+        cmd: sysctl --system
+      when:
+        - "'sysctl_hardening' in (modules_selected | default([]))"
+        - sysctl_hardening_conf.changed
+
     - name: Ensure static network values are present for ifupdown module
       ansible.builtin.assert:
         that:
