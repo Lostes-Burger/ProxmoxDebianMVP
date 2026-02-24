@@ -16,9 +16,13 @@
     mode: "0755"
 
 - name: Add Docker GPG key
-  ansible.builtin.get_url:
-    url: https://download.docker.com/linux/debian/gpg
-    dest: /etc/apt/keyrings/docker.asc
+  ansible.builtin.command:
+    cmd: curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+    creates: /etc/apt/keyrings/docker.asc
+
+- name: Ensure Docker GPG key file permissions
+  ansible.builtin.file:
+    path: /etc/apt/keyrings/docker.asc
     mode: "0644"
 
 - name: Add Docker apt repository
