@@ -67,4 +67,5 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 - Neue VMs werden ohne erzwungenen Serial-Display-Modus erstellt.
 - `unifi_os_server` zieht bei Auswahl automatisch einen Linux-x64-Installer von `ui.com`/`ubnt` (falls auffindbar), als `.deb` oder Binary.
 - Optional kann `uos_download_url_override` gesetzt werden, um eine feste UniFi-OS-Server-Installer-URL zu erzwingen.
+- Beim Binary-Installer wird der `install`-Modus mit Auto-Confirm verwendet (analog zum Community-Projekt `dgodibadze/UniFi_OS_Server`).
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).

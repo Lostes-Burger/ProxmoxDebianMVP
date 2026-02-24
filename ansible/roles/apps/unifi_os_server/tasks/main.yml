@@ -4,6 +4,7 @@
     name:
       - ca-certificates
       - curl
+      - podman
     state: present
     update_cache: true
 
@@ -209,12 +210,14 @@
   ansible.builtin.shell: |
     set -o pipefail
     curl -fsSL https://fw-download.ubnt.com/data/unifi-os-server/ \
-      | tr '"'"'"'"'"' '\n' \
+      | tr '"' '\n' \
       | grep -E 'unifi[-_.]?os[-_.]?server|uosserver' \
       | grep -E 'linux[-_.]?(x64|amd64)|amd64|x64' \
       | grep -E '\.(deb|bin|run|sh)(\?|$)|linux[-_.]?(x64|amd64)$' \
       | sort -rV \
       | head -n 1
+  args:
+    executable: /bin/bash
   register: uos_fw_index_probe
   changed_when: false
   failed_when: false
@@ -247,6 +250,8 @@
       | grep -E '\.(deb|bin|run|sh)(\?|$)|linux[-_.]?(x64|amd64)$' \
       | sort -rV \
       | head -n 1
+  args:
+    executable: /bin/bash
   register: uos_dl_index_probe
   changed_when: false
   failed_when: false
@@ -344,8 +349,11 @@
     - uos_current_url != uos_download_url
 
 - name: Run UniFi OS Server binary installer
-  ansible.builtin.command:
-    cmd: "{{ uos_installer_path | quote }}"
+  ansible.builtin.shell: |
+    set -o pipefail
+    yes y | {{ uos_installer_path | quote }} install
+  args:
+    executable: /bin/bash
   when:
     - uos_install_available
     - not uos_download_is_deb
