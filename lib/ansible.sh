@@ -64,6 +64,10 @@ run_ansible() {
   local selected_modules_csv="$8"
   local selected_apps_csv="$9"
   local ufw_open_app_ports="${10}"
+  local ip_mode="${11}"
+  local ip_cidr="${12}"
+  local gateway="${13}"
+  local dns_server="${14}"
 
   local work_dir
   work_dir="$(mktemp -d /tmp/proxmox-orchestrator-ansible-XXXX)"
@@ -106,6 +110,10 @@ EOT
     fi
 
     printf "ufw_open_app_ports: %s\n" "$ufw_open_app_ports"
+    printf "vm_ip_mode: %s\n" "$(yaml_quote "$ip_mode")"
+    printf "vm_ip_cidr: %s\n" "$(yaml_quote "$ip_cidr")"
+    printf "vm_gateway: %s\n" "$(yaml_quote "$gateway")"
+    printf "vm_dns_server: %s\n" "$(yaml_quote "$dns_server")"
   } >"$vars_file"
 
   log_info "Starte Ansible Provisionierung"

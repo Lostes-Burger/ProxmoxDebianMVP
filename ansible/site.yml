@@ -8,6 +8,13 @@
       ansible.builtin.debug:
         msg: "Ausgewählte Module: {{ modules_selected | default([]) | join(', ') if (modules_selected | default([]) | length > 0) else 'keine' }}"
 
+    - name: Validate selected modules
+      ansible.builtin.assert:
+        that:
+          - item in ['baseline_tools', 'unattended_upgrades', 'network_ifupdown', 'ufw', 'fail2ban', 'sysctl_hardening']
+        fail_msg: "Unbekanntes Modul ausgewählt: {{ item }}"
+      loop: "{{ modules_selected | default([]) }}"
+
     - name: Validate selected apps
       ansible.builtin.assert:
         that:
@@ -18,6 +25,141 @@
     - name: Show selected apps
       ansible.builtin.debug:
         msg: "Ausgewählte Apps: {{ apps_selected | default([]) | join(', ') if (apps_selected | default([]) | length > 0) else 'keine' }}"
+
+    - name: Install unattended-upgrades packages when selected
+      ansible.builtin.apt:
+        name:
+          - unattended-upgrades
+          - apt-listchanges
+        state: present
+        update_cache: true
+      when: "'unattended_upgrades' in (modules_selected | default([]))"
+
+    - name: Configure apt periodic auto updates when selected
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Download-Upgradeable-Packages "1";
+          APT::Periodic::Unattended-Upgrade "1";
+          APT::Periodic::AutocleanInterval "7";
+      when: "'unattended_upgrades' in (modules_selected | default([]))"
+
+    - name: Configure unattended-upgrades defaults when selected
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52unattended-upgrades-custom
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          Unattended-Upgrade::Automatic-Reboot "false";
+          Unattended-Upgrade::Remove-Unused-Dependencies "true";
+          Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+      when: "'unattended_upgrades' in (modules_selected | default([]))"
+
+    - name: Enable unattended-upgrades service when selected
+      ansible.builtin.service:
+        name: unattended-upgrades
+        state: started
+        enabled: true
+      when: "'unattended_upgrades' in (modules_selected | default([]))"
+
+    - name: Ensure static network values are present for ifupdown module
+      ansible.builtin.assert:
+        that:
+          - (vm_ip_cidr | default('') | length) > 0
+          - (vm_gateway | default('') | length) > 0
+        fail_msg: "Für static IP werden vm_ip_cidr und vm_gateway benötigt."
+      when:
+        - "'network_ifupdown' in (modules_selected | default([]))"
+        - (vm_ip_mode | default('dhcp')) == 'static'
+
+    - name: Determine primary interface for ifupdown module
+      ansible.builtin.set_fact:
+        ifupdown_primary_iface: "{{ ansible_default_ipv4.interface }}"
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Ensure ifupdown package is installed when selected
+      ansible.builtin.apt:
+        name: ifupdown
+        state: present
+        update_cache: true
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Check current /etc/network/interfaces
+      ansible.builtin.stat:
+        path: /etc/network/interfaces
+      register: interfaces_file_stat
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Backup current /etc/network/interfaces once
+      ansible.builtin.copy:
+        src: /etc/network/interfaces
+        dest: /etc/network/interfaces.before-ifupdown.bak
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0644"
+        force: false
+      when:
+        - "'network_ifupdown' in (modules_selected | default([]))"
+        - interfaces_file_stat.stat.exists
+
+    - name: Disable cloud-init network rendering for future boots
+      ansible.builtin.copy:
+        dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          network: {config: disabled}
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Write classic ifupdown network config
+      ansible.builtin.copy:
+        dest: /etc/network/interfaces
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          source /etc/network/interfaces.d/*
+          auto lo
+          iface lo inet loopback
+
+          auto {{ ifupdown_primary_iface }}
+          iface {{ ifupdown_primary_iface }} inet {% if (vm_ip_mode | default('dhcp')) == 'static' %}static{% else %}dhcp{% endif %}
+          {% if (vm_ip_mode | default('dhcp')) == 'static' %}
+              address {{ vm_ip_cidr }}
+              gateway {{ vm_gateway }}
+          {% endif %}
+          {% if (vm_dns_server | default('') | length) > 0 %}
+              dns-nameservers {{ vm_dns_server }}
+          {% endif %}
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Gather service facts for network service adjustments
+      ansible.builtin.service_facts:
+      when: "'network_ifupdown' in (modules_selected | default([]))"
+
+    - name: Disable systemd-networkd when present
+      ansible.builtin.service:
+        name: systemd-networkd
+        enabled: false
+        state: stopped
+      when:
+        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'systemd-networkd.service' in ansible_facts.services"
+
+    - name: Enable networking service when present
+      ansible.builtin.service:
+        name: networking
+        enabled: true
+      when:
+        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'networking.service' in ansible_facts.services"
 
     - name: Build app port list for optional UFW opening
       ansible.builtin.set_fact:
@@ -82,6 +224,15 @@
       ansible.builtin.command:
         cmd: "ufw --force enable"
       when: "'ufw' in (modules_selected | default([]))"
+
+    - name: Reboot after network backend switch
+      ansible.builtin.reboot:
+        msg: "Reboot after network backend migration to ifupdown"
+        connect_timeout: 10
+        reboot_timeout: 600
+        pre_reboot_delay: 0
+        post_reboot_delay: 5
+      when: "'network_ifupdown' in (modules_selected | default([]))"
 
     - name: Run selected app roles
       ansible.builtin.include_role:

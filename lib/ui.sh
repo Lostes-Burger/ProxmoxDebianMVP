@@ -284,7 +284,8 @@ choose_modules() {
   local selection
   if ! selection=$(whiptail --title "Module" --checklist "Optionale Module (leer möglich)" 20 85 8 \
     "baseline_tools" "Basiswerkzeuge" OFF \
-    "unattended_upgrades" "Automatische Updates" OFF \
+    "unattended_upgrades" "Automatische Updates" ON \
+    "network_ifupdown" "Klassisches Netzwerk (/etc/network/interfaces)" ON \
     "ufw" "Firewall" OFF \
     "fail2ban" "Bruteforce-Schutz" OFF \
     "sysctl_hardening" "Kernel Hardening" OFF \

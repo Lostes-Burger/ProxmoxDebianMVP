@@ -46,7 +46,9 @@ main() {
 
   bootstrap_vm "$target_ip" "$SSH_PORT" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD"
 
-  run_ansible "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD" "$SELECTED_MODULES" "$SELECTED_APPS" "$UFW_OPEN_APP_PORTS"
+  run_ansible \
+    "$SCRIPT_DIR/ansible" "$target_ip" "$SSH_PORT" "$CI_USER" "$ANSIBLE_AUTH_MODE" "$ANSIBLE_PRIVATE_KEY_PATH" "$ANSIBLE_PASSWORD" \
+    "$SELECTED_MODULES" "$SELECTED_APPS" "$UFW_OPEN_APP_PORTS" "$IP_MODE" "$IP_CIDR" "$GATEWAY" "$DNS_SERVER"
 
   whiptail --title "Fertig" --msgbox "Provisionierung abgeschlossen.\n\nVM: ${VM_NAME} (${VMID})\nIP: ${target_ip}" 12 70
   log_info "Provisionierung erfolgreich abgeschlossen"
