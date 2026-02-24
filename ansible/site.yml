@@ -19,6 +19,70 @@
       ansible.builtin.debug:
         msg: "Ausgewählte Apps: {{ apps_selected | default([]) | join(', ') if (apps_selected | default([]) | length > 0) else 'keine' }}"
 
+    - name: Build app port list for optional UFW opening
+      ansible.builtin.set_fact:
+        app_ports_to_open: >-
+          {{
+            (
+              [{'port': '80', 'proto': 'tcp'}, {'port': '443', 'proto': 'tcp'}]
+              if ('nginx' in (apps_selected | default([]))) else []
+            )
+            +
+            (
+              [
+                {'port': '11443', 'proto': 'tcp'},
+                {'port': '5005', 'proto': 'tcp'},
+                {'port': '9543', 'proto': 'tcp'},
+                {'port': '6789', 'proto': 'tcp'},
+                {'port': '8080', 'proto': 'tcp'},
+                {'port': '8443', 'proto': 'tcp'},
+                {'port': '8444', 'proto': 'tcp'},
+                {'port': '5671', 'proto': 'tcp'},
+                {'port': '8880', 'proto': 'tcp'},
+                {'port': '8881', 'proto': 'tcp'},
+                {'port': '8882', 'proto': 'tcp'},
+                {'port': '3478', 'proto': 'udp'},
+                {'port': '5514', 'proto': 'udp'},
+                {'port': '10003', 'proto': 'udp'}
+              ]
+              if ('unifi_os_server' in (apps_selected | default([]))) else []
+            )
+          }}
+
+    - name: Install UFW when selected
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+        update_cache: true
+      when: "'ufw' in (modules_selected | default([]))"
+
+    - name: Set UFW defaults when selected
+      ansible.builtin.command:
+        cmd: "{{ item }}"
+      loop:
+        - "ufw default deny incoming"
+        - "ufw default allow outgoing"
+      when: "'ufw' in (modules_selected | default([]))"
+
+    - name: Allow SSH through UFW when selected
+      ansible.builtin.command:
+        cmd: "ufw allow {{ ansible_port | default(22) }}/tcp"
+      when: "'ufw' in (modules_selected | default([]))"
+
+    - name: Allow selected app ports through UFW
+      ansible.builtin.command:
+        cmd: "ufw allow {{ item.port }}/{{ item.proto }}"
+      loop: "{{ app_ports_to_open | default([]) }}"
+      when:
+        - "'ufw' in (modules_selected | default([]))"
+        - ufw_open_app_ports | default(false) | bool
+        - (app_ports_to_open | default([]) | length) > 0
+
+    - name: Enable UFW when selected
+      ansible.builtin.command:
+        cmd: "ufw --force enable"
+      when: "'ufw' in (modules_selected | default([]))"
+
     - name: Run selected app roles
       ansible.builtin.include_role:
         name: "apps/{{ item }}"

@@ -23,6 +23,7 @@ chmod +x orchestrator.sh
   - nur echte Bridge-Interfaces (`vmbr*`) in der Auswahl
   - optionaler VLAN-Tag
   - DHCP oder statische IP
+- Cloud-Init setzt VM-Locale auf `en_US.UTF-8` und Keyboard-Layout auf `de`.
 - SSH-Login:
   - Feld für Ansible-Benutzername (Default `debian`)
   - Danach Auth-Auswahl für den Ansible-Benutzer: `SSH Key Path` / `manueller SSH Key` / `Passwort`
@@ -31,6 +32,7 @@ chmod +x orchestrator.sh
   - Auswahl: `SSH Key Path` / `manueller SSH Key` / `Passwort`
   - Root-Zugang wird direkt via Cloud-Init konfiguriert
 - Optionale Module (auch leer möglich)
+- Wenn `ufw` und Apps mit bekannten Ports ausgewählt sind, fragt der Wizard, ob diese App-Ports automatisch freigegeben werden sollen.
 - Optionale Apps `docker`, `nginx`, `unifi_os_server` (auch leer möglich)
 - `qemu-guest-agent` wird immer installiert (nicht mehr als optionales Modul)
 

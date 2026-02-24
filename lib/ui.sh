@@ -450,6 +450,22 @@ collect_wizard_config() {
   local apps
   apps="$(choose_apps)"
 
+  local ufw_open_app_ports="false"
+  local ufw_app_ports_hint=""
+  if [[ ",${modules}," == *,ufw,* ]]; then
+    if [[ ",${apps}," == *,nginx,* ]]; then
+      ufw_app_ports_hint+="\n- nginx: 80/tcp, 443/tcp"
+    fi
+    if [[ ",${apps}," == *,unifi_os_server,* ]]; then
+      ufw_app_ports_hint+="\n- unifi_os_server: 11443/tcp, 5005/tcp, 9543/tcp, 6789/tcp, 8080/tcp, 8443/tcp, 8444/tcp, 5671/tcp, 8880/tcp, 8881/tcp, 8882/tcp, 3478/udp, 5514/udp, 10003/udp"
+    fi
+    if [[ -n "$ufw_app_ports_hint" ]]; then
+      if whiptail --title "UFW App-Ports" --yesno "UFW ist ausgewählt. Sollen die folgenden App-Ports automatisch freigegeben werden?\n${ufw_app_ports_hint}" 22 110; then
+        ufw_open_app_ports="true"
+      fi
+    fi
+  fi
+
   local summary
   summary=$(cat <<EOT
 VMID: $vmid
@@ -466,6 +482,7 @@ Ansible Auth: $ansible_auth_mode
 Root Auth: $root_auth_mode
 Module: ${modules:-keine}
 Apps: ${apps:-keine}
+UFW App-Ports freigeben: ${ufw_open_app_ports}
 EOT
 )
 
@@ -500,5 +517,6 @@ EOT
     printf 'SSH_PORT=%q\n' "$ssh_port"
     printf 'SELECTED_MODULES=%q\n' "$modules"
     printf 'SELECTED_APPS=%q\n' "$apps"
+    printf 'UFW_OPEN_APP_PORTS=%q\n' "$ufw_open_app_ports"
   } >"$output_file"
 }

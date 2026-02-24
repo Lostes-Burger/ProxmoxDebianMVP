@@ -63,6 +63,7 @@ run_ansible() {
   local password="$7"
   local selected_modules_csv="$8"
   local selected_apps_csv="$9"
+  local ufw_open_app_ports="${10}"
 
   local work_dir
   work_dir="$(mktemp -d /tmp/proxmox-orchestrator-ansible-XXXX)"
@@ -103,6 +104,8 @@ EOT
         [[ -n "$app" ]] && printf '  - %s\n' "$app"
       done
     fi
+
+    printf "ufw_open_app_ports: %s\n" "$ufw_open_app_ports"
   } >"$vars_file"
 
   log_info "Starte Ansible Provisionierung"

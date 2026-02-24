@@ -33,16 +33,17 @@ storage_has_content_type() {
 
 configure_cloud_init_userdata() {
   local vmid="$1"
-  local snippets_storage="$2"
-  local ansible_auth_mode="$3"
-  local ci_user="$4"
-  local ansible_ssh_key_path="$5"
-  local ansible_ssh_key_text="$6"
-  local ansible_password="$7"
-  local root_auth_mode="$8"
-  local root_ssh_key_path="$9"
-  local root_ssh_key_text="${10}"
-  local root_password="${11}"
+  local vm_hostname="$2"
+  local snippets_storage="$3"
+  local ansible_auth_mode="$4"
+  local ci_user="$5"
+  local ansible_ssh_key_path="$6"
+  local ansible_ssh_key_text="$7"
+  local ansible_password="$8"
+  local root_auth_mode="$9"
+  local root_ssh_key_path="${10}"
+  local root_ssh_key_text="${11}"
+  local root_password="${12}"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
   if ! storage_has_content_type "$snippets_storage" "snippets"; then
@@ -172,6 +173,13 @@ EOT
   cat >"$snippet_path" <<EOT
 #cloud-config
 package_update: true
+hostname: ${vm_hostname}
+fqdn: ${vm_hostname}
+manage_etc_hosts: true
+locale: en_US.UTF-8
+keyboard:
+  layout: de
+  variant: ''
 ${auth_block}
 disable_root: false
 packages:
@@ -206,21 +214,22 @@ EOT
 
 configure_cloud_init() {
   local vmid="$1"
-  local vm_storage="$2"
-  local snippets_storage="$3"
-  local ci_user="$4"
-  local ansible_auth_mode="$5"
-  local ansible_ssh_key_path="$6"
-  local ansible_ssh_key_text="$7"
-  local ansible_password="$8"
-  local root_auth_mode="$9"
-  local root_ssh_key_path="${10}"
-  local root_ssh_key_text="${11}"
-  local root_password="${12}"
-  local ip_mode="${13}"
-  local ip_cidr="${14}"
-  local gateway="${15}"
-  local dns_server="${16}"
+  local vm_hostname="$2"
+  local vm_storage="$3"
+  local snippets_storage="$4"
+  local ci_user="$5"
+  local ansible_auth_mode="$6"
+  local ansible_ssh_key_path="$7"
+  local ansible_ssh_key_text="$8"
+  local ansible_password="$9"
+  local root_auth_mode="${10}"
+  local root_ssh_key_path="${11}"
+  local root_ssh_key_text="${12}"
+  local root_password="${13}"
+  local ip_mode="${14}"
+  local ip_cidr="${15}"
+  local gateway="${16}"
+  local dns_server="${17}"
 
   local ipconfig="ip=dhcp"
   if [[ "$ip_mode" == "static" ]]; then
@@ -228,7 +237,7 @@ configure_cloud_init() {
   fi
 
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ansible_auth_mode" "$ci_user" "$ansible_ssh_key_path" "$ansible_ssh_key_text" "$ansible_password" "$root_auth_mode" "$root_ssh_key_path" "$root_ssh_key_text" "$root_password"
+  configure_cloud_init_userdata "$vmid" "$vm_hostname" "$snippets_storage" "$ansible_auth_mode" "$ci_user" "$ansible_ssh_key_path" "$ansible_ssh_key_text" "$ansible_password" "$root_auth_mode" "$root_ssh_key_path" "$root_ssh_key_text" "$root_password"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null
