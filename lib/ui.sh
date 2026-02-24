@@ -363,12 +363,12 @@ collect_wizard_config() {
   fi
 
   local ci_user
-  ci_user="$(whiptail --inputbox "Ansible Benutzername (Cloud-Init User)" 11 80 "debian" 3>&1 1>&2 2>&3)"
+  ci_user="$(whiptail --inputbox "Automations-Benutzername (SSH/Bootstrap/Ansible)" 11 90 "debian" 3>&1 1>&2 2>&3)"
   [[ -n "$ci_user" ]] || die "Ansible Benutzername darf nicht leer sein."
   [[ "$ci_user" != "root" ]] || die "Ansible Benutzername darf nicht 'root' sein."
 
   whiptail --title "Hinweis Ansible Nutzer" --msgbox \
-    "Dieser Benutzer wird für SSH, Bootstrap und Ansible verwendet.\nEr bekommt sudo-Rechte in der VM." \
+    "Dieser Benutzer wird von Cloud-Init angelegt und für SSH, Bootstrap und Ansible verwendet.\nEr bekommt sudo-Rechte in der VM." \
     12 80
 
   local ansible_auth_mode

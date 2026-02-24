@@ -13,14 +13,37 @@
   register: uos_release_page
   changed_when: false
 
-- name: Extract latest UniFi OS Server Linux x64 deb URL
+- name: Normalize UniFi OS Server releases page content
+  ansible.builtin.set_fact:
+    uos_release_page_normalized: "{{ uos_release_page.stdout | regex_replace('\\\\/', '/') }}"
+
+- name: Extract UniFi OS Server deb URL candidates
+  ansible.builtin.set_fact:
+    uos_download_candidates: >-
+      {{
+        (
+          uos_release_page_normalized
+          | regex_findall('https://[^\"''\\s<>]*unifi-os-server[^\"''\\s<>]*\\.deb')
+        )
+        +
+        (
+          uos_release_page_normalized
+          | regex_findall('fw-download\\.ubnt\\.com/data/unifi-os-server/[^\"''\\s<>]*\\.deb')
+          | map('regex_replace', '^(.*)$', 'https://\\1')
+          | list
+        )
+      | unique
+      }}
+
+- name: Pick preferred UniFi OS Server download URL
   ansible.builtin.set_fact:
     uos_download_url: >-
       {{
-        (uos_release_page.stdout
-        | regex_findall('https://fw-download\\.ubnt\\.com/data/unifi-os-server/[^"''\\s<>]*linux-x64[^"''\\s<>]*\\.deb')
-        | first)
-        | default('')
+        (
+          (uos_download_candidates | select('search', 'linux-x64|linux-amd64|amd64|x64') | list | first)
+          | default(uos_download_candidates | first, true)
+        )
+        | default('', true)
       }}
 
 - name: Ensure UniFi OS Server URL was found
