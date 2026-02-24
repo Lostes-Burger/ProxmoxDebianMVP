@@ -53,6 +53,23 @@ yaml_quote() {
   printf "'%s'" "$s"
 }
 
+emit_csv_as_yaml_list() {
+  local key="$1"
+  local csv="$2"
+  local item
+
+  if [[ -z "$csv" ]]; then
+    printf "%s: []\n" "$key"
+    return 0
+  fi
+
+  printf "%s:\n" "$key"
+  IFS=',' read -r -a _arr <<<"$csv"
+  for item in "${_arr[@]}"; do
+    [[ -n "$item" ]] && printf "  - %s\n" "$item"
+  done
+}
+
 run_ansible() {
   local ansible_dir="$1"
   local ip="$2"
@@ -93,41 +110,10 @@ EOT
       printf "ansible_password: %s\n" "$(yaml_quote "$password")"
     fi
 
-    echo "modules_selected:"
-    if [[ -n "$selected_modules_csv" ]]; then
-      local module
-      IFS=',' read -r -a modules_array <<<"$selected_modules_csv"
-      for module in "${modules_array[@]}"; do
-        [[ -n "$module" ]] && printf '  - %s\n' "$module"
-      done
-    fi
-
-    echo "apps_selected:"
-    if [[ -n "$selected_apps_csv" ]]; then
-      local app
-      IFS=',' read -r -a apps_array <<<"$selected_apps_csv"
-      for app in "${apps_array[@]}"; do
-        [[ -n "$app" ]] && printf '  - %s\n' "$app"
-      done
-    fi
-
-    echo "baseline_packages_selected:"
-    if [[ -n "$selected_baseline_packages_csv" ]]; then
-      local baseline_pkg
-      IFS=',' read -r -a baseline_packages_array <<<"$selected_baseline_packages_csv"
-      for baseline_pkg in "${baseline_packages_array[@]}"; do
-        [[ -n "$baseline_pkg" ]] && printf '  - %s\n' "$baseline_pkg"
-      done
-    fi
-
-    echo "fail2ban_jails_selected:"
-    if [[ -n "$selected_fail2ban_jails_csv" ]]; then
-      local jail
-      IFS=',' read -r -a fail2ban_jails_array <<<"$selected_fail2ban_jails_csv"
-      for jail in "${fail2ban_jails_array[@]}"; do
-        [[ -n "$jail" ]] && printf '  - %s\n' "$jail"
-      done
-    fi
+    emit_csv_as_yaml_list "modules_selected" "$selected_modules_csv"
+    emit_csv_as_yaml_list "apps_selected" "$selected_apps_csv"
+    emit_csv_as_yaml_list "baseline_packages_selected" "$selected_baseline_packages_csv"
+    emit_csv_as_yaml_list "fail2ban_jails_selected" "$selected_fail2ban_jails_csv"
 
     printf "ufw_open_app_ports: %s\n" "$ufw_open_app_ports"
     printf "vm_ip_mode: %s\n" "$(yaml_quote "$ip_mode")"

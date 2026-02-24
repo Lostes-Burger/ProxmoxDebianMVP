@@ -6,61 +6,61 @@
   tasks:
     - name: Show selected modules
       ansible.builtin.debug:
-        msg: "Ausgewählte Module: {{ modules_selected | default([]) | join(', ') if (modules_selected | default([]) | length > 0) else 'keine' }}"
+        msg: "Ausgewählte Module: {{ modules_selected | default([], true) | join(', ') if (modules_selected | default([], true) | length > 0) else 'keine' }}"
 
     - name: Validate selected modules
       ansible.builtin.assert:
         that:
           - item in ['baseline_tools', 'unattended_upgrades', 'network_ifupdown', 'ufw', 'fail2ban', 'sysctl_hardening']
         fail_msg: "Unbekanntes Modul ausgewählt: {{ item }}"
-      loop: "{{ modules_selected | default([]) }}"
+      loop: "{{ modules_selected | default([], true) }}"
 
     - name: Validate selected apps
       ansible.builtin.assert:
         that:
           - item in ['docker', 'nginx', 'unifi_os_server']
         fail_msg: "Unbekannte App ausgewählt: {{ item }}"
-      loop: "{{ apps_selected | default([]) }}"
+      loop: "{{ apps_selected | default([], true) }}"
 
     - name: Validate selected baseline packages
       ansible.builtin.assert:
         that:
           - item in ['htop', 'vim', 'curl', 'ncdu', 'git', 'jq', 'tmux', 'wget', 'less', 'ca-certificates']
         fail_msg: "Unbekanntes Baseline-Paket ausgewählt: {{ item }}"
-      loop: "{{ baseline_packages_selected | default([]) }}"
+      loop: "{{ baseline_packages_selected | default([], true) }}"
 
     - name: Validate selected fail2ban profiles
       ansible.builtin.assert:
         that:
           - item in ['sshd', 'recidive', 'nginx-http-auth', 'nginx-botsearch']
         fail_msg: "Unbekanntes fail2ban-Profil ausgewählt: {{ item }}"
-      loop: "{{ fail2ban_jails_selected | default([]) }}"
+      loop: "{{ fail2ban_jails_selected | default([], true) }}"
 
     - name: Show selected apps
       ansible.builtin.debug:
-        msg: "Ausgewählte Apps: {{ apps_selected | default([]) | join(', ') if (apps_selected | default([]) | length > 0) else 'keine' }}"
+        msg: "Ausgewählte Apps: {{ apps_selected | default([], true) | join(', ') if (apps_selected | default([], true) | length > 0) else 'keine' }}"
 
     - name: Show selected baseline packages
       ansible.builtin.debug:
-        msg: "Ausgewählte Baseline-Pakete: {{ baseline_packages_selected | default([]) | join(', ') if (baseline_packages_selected | default([]) | length > 0) else 'keine' }}"
+        msg: "Ausgewählte Baseline-Pakete: {{ baseline_packages_selected | default([], true) | join(', ') if (baseline_packages_selected | default([], true) | length > 0) else 'keine' }}"
 
     - name: Show selected fail2ban profiles
       ansible.builtin.debug:
-        msg: "Ausgewählte fail2ban-Profile: {{ fail2ban_jails_selected | default([]) | join(', ') if (fail2ban_jails_selected | default([]) | length > 0) else 'keine' }}"
+        msg: "Ausgewählte fail2ban-Profile: {{ fail2ban_jails_selected | default([], true) | join(', ') if (fail2ban_jails_selected | default([], true) | length > 0) else 'keine' }}"
 
     - name: Ensure baseline package selection exists when module is enabled
       ansible.builtin.assert:
         that:
-          - (baseline_packages_selected | default([]) | length) > 0
+          - (baseline_packages_selected | default([], true) | length) > 0
         fail_msg: "Modul baseline_tools ist aktiv, aber es wurden keine Pakete ausgewählt."
-      when: "'baseline_tools' in (modules_selected | default([]))"
+      when: "'baseline_tools' in (modules_selected | default([], true))"
 
     - name: Install selected baseline packages
       ansible.builtin.apt:
         name: "{{ baseline_packages_selected }}"
         state: present
         update_cache: true
-      when: "'baseline_tools' in (modules_selected | default([]))"
+      when: "'baseline_tools' in (modules_selected | default([], true))"
 
     - name: Install unattended-upgrades packages when selected
       ansible.builtin.apt:
@@ -69,7 +69,7 @@
           - apt-listchanges
         state: present
         update_cache: true
-      when: "'unattended_upgrades' in (modules_selected | default([]))"
+      when: "'unattended_upgrades' in (modules_selected | default([], true))"
 
     - name: Configure apt periodic auto updates when selected
       ansible.builtin.copy:
@@ -82,7 +82,7 @@
           APT::Periodic::Download-Upgradeable-Packages "1";
           APT::Periodic::Unattended-Upgrade "1";
           APT::Periodic::AutocleanInterval "7";
-      when: "'unattended_upgrades' in (modules_selected | default([]))"
+      when: "'unattended_upgrades' in (modules_selected | default([], true))"
 
     - name: Configure unattended-upgrades defaults when selected
       ansible.builtin.copy:
@@ -94,20 +94,20 @@
           Unattended-Upgrade::Automatic-Reboot "false";
           Unattended-Upgrade::Remove-Unused-Dependencies "true";
           Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
-      when: "'unattended_upgrades' in (modules_selected | default([]))"
+      when: "'unattended_upgrades' in (modules_selected | default([], true))"
 
     - name: Enable unattended-upgrades service when selected
       ansible.builtin.service:
         name: unattended-upgrades
         state: started
         enabled: true
-      when: "'unattended_upgrades' in (modules_selected | default([]))"
+      when: "'unattended_upgrades' in (modules_selected | default([], true))"
 
     - name: Check existing sysctl hardening config
       ansible.builtin.stat:
         path: /etc/sysctl.d/99-orchestrator-hardening.conf
       register: sysctl_hardening_conf_stat
-      when: "'sysctl_hardening' in (modules_selected | default([]))"
+      when: "'sysctl_hardening' in (modules_selected | default([], true))"
 
     - name: Backup existing sysctl hardening config once
       ansible.builtin.copy:
@@ -119,7 +119,7 @@
         mode: "0644"
         force: false
       when:
-        - "'sysctl_hardening' in (modules_selected | default([]))"
+        - "'sysctl_hardening' in (modules_selected | default([], true))"
         - sysctl_hardening_conf_stat.stat.exists
 
     - name: Write conservative sysctl hardening profile
@@ -150,28 +150,37 @@
           fs.protected_hardlinks=1
           fs.protected_symlinks=1
       register: sysctl_hardening_conf
-      when: "'sysctl_hardening' in (modules_selected | default([]))"
+      when: "'sysctl_hardening' in (modules_selected | default([], true))"
 
     - name: Apply sysctl hardening profile
       ansible.builtin.command:
         cmd: sysctl --system
       when:
-        - "'sysctl_hardening' in (modules_selected | default([]))"
+        - "'sysctl_hardening' in (modules_selected | default([], true))"
         - sysctl_hardening_conf.changed
 
     - name: Ensure fail2ban profile selection exists when module is enabled
       ansible.builtin.assert:
         that:
-          - (fail2ban_jails_selected | default([]) | length) > 0
+          - (fail2ban_jails_selected | default([], true) | length) > 0
         fail_msg: "Modul fail2ban ist aktiv, aber es wurden keine Schutzprofile ausgewählt."
-      when: "'fail2ban' in (modules_selected | default([]))"
+      when: "'fail2ban' in (modules_selected | default([], true))"
+
+    - name: Ensure nginx app selected when nginx fail2ban profiles are used
+      ansible.builtin.assert:
+        that:
+          - "'nginx' in (apps_selected | default([], true))"
+        fail_msg: "Die fail2ban-Profile nginx-http-auth/nginx-botsearch benötigen die App nginx."
+      when:
+        - "'fail2ban' in (modules_selected | default([], true))"
+        - "'nginx-http-auth' in (fail2ban_jails_selected | default([], true)) or 'nginx-botsearch' in (fail2ban_jails_selected | default([], true))"
 
     - name: Install fail2ban when selected
       ansible.builtin.apt:
         name: fail2ban
         state: present
         update_cache: true
-      when: "'fail2ban' in (modules_selected | default([]))"
+      when: "'fail2ban' in (modules_selected | default([], true))"
 
     - name: Write fail2ban jail configuration
       ansible.builtin.copy:
@@ -186,7 +195,7 @@
           maxretry = 5
           backend = systemd
 
-          {% for jail in fail2ban_jails_selected | default([]) %}
+          {% for jail in fail2ban_jails_selected | default([], true) %}
           [{{ jail }}]
           enabled = true
           {% if jail == 'sshd' %}
@@ -208,7 +217,7 @@
           {% endif %}
 
           {% endfor %}
-      when: "'fail2ban' in (modules_selected | default([]))"
+      when: "'fail2ban' in (modules_selected | default([], true))"
 
     - name: Ensure static network values are present for ifupdown module
       ansible.builtin.assert:
@@ -217,26 +226,26 @@
           - (vm_gateway | default('') | length) > 0
         fail_msg: "Für static IP werden vm_ip_cidr und vm_gateway benötigt."
       when:
-        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'network_ifupdown' in (modules_selected | default([], true))"
         - (vm_ip_mode | default('dhcp')) == 'static'
 
     - name: Determine primary interface for ifupdown module
       ansible.builtin.set_fact:
         ifupdown_primary_iface: "{{ ansible_default_ipv4.interface }}"
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Ensure ifupdown package is installed when selected
       ansible.builtin.apt:
         name: ifupdown
         state: present
         update_cache: true
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Check current /etc/network/interfaces
       ansible.builtin.stat:
         path: /etc/network/interfaces
       register: interfaces_file_stat
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Backup current /etc/network/interfaces once
       ansible.builtin.copy:
@@ -248,7 +257,7 @@
         mode: "0644"
         force: false
       when:
-        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'network_ifupdown' in (modules_selected | default([], true))"
         - interfaces_file_stat.stat.exists
 
     - name: Disable cloud-init network rendering for future boots
@@ -259,7 +268,7 @@
         mode: "0644"
         content: |
           network: {config: disabled}
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Write classic ifupdown network config
       ansible.builtin.copy:
@@ -281,27 +290,29 @@
           {% if (vm_dns_server | default('') | length) > 0 %}
               dns-nameservers {{ vm_dns_server }}
           {% endif %}
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Gather service facts for network service adjustments
       ansible.builtin.service_facts:
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Disable systemd-networkd when present
       ansible.builtin.service:
         name: systemd-networkd
         enabled: false
       when:
-        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'network_ifupdown' in (modules_selected | default([], true))"
         - "'systemd-networkd.service' in ansible_facts.services"
+        - ansible_facts.services['systemd-networkd.service'].status != 'static'
 
     - name: Enable networking service when present
       ansible.builtin.service:
         name: networking
         enabled: true
       when:
-        - "'network_ifupdown' in (modules_selected | default([]))"
+        - "'network_ifupdown' in (modules_selected | default([], true))"
         - "'networking.service' in ansible_facts.services"
+        - ansible_facts.services['networking.service'].status != 'static'
 
     - name: Build app port list for optional UFW opening
       ansible.builtin.set_fact:
@@ -309,7 +320,7 @@
           {{
             (
               [{'port': '80', 'proto': 'tcp'}, {'port': '443', 'proto': 'tcp'}]
-              if ('nginx' in (apps_selected | default([]))) else []
+              if ('nginx' in (apps_selected | default([], true))) else []
             )
             +
             (
@@ -329,7 +340,7 @@
                 {'port': '5514', 'proto': 'udp'},
                 {'port': '10003', 'proto': 'udp'}
               ]
-              if ('unifi_os_server' in (apps_selected | default([]))) else []
+              if ('unifi_os_server' in (apps_selected | default([], true))) else []
             )
           }}
 
@@ -338,7 +349,7 @@
         name: ufw
         state: present
         update_cache: true
-      when: "'ufw' in (modules_selected | default([]))"
+      when: "'ufw' in (modules_selected | default([], true))"
 
     - name: Set UFW defaults when selected
       ansible.builtin.command:
@@ -346,26 +357,26 @@
       loop:
         - "ufw default deny incoming"
         - "ufw default allow outgoing"
-      when: "'ufw' in (modules_selected | default([]))"
+      when: "'ufw' in (modules_selected | default([], true))"
 
     - name: Allow SSH through UFW when selected
       ansible.builtin.command:
         cmd: "ufw allow {{ ansible_port | default(22) }}/tcp"
-      when: "'ufw' in (modules_selected | default([]))"
+      when: "'ufw' in (modules_selected | default([], true))"
 
     - name: Allow selected app ports through UFW
       ansible.builtin.command:
         cmd: "ufw allow {{ item.port }}/{{ item.proto }}"
-      loop: "{{ app_ports_to_open | default([]) }}"
+      loop: "{{ app_ports_to_open | default([], true) }}"
       when:
-        - "'ufw' in (modules_selected | default([]))"
+        - "'ufw' in (modules_selected | default([], true))"
         - ufw_open_app_ports | default(false) | bool
-        - (app_ports_to_open | default([]) | length) > 0
+        - (app_ports_to_open | default([], true) | length) > 0
 
     - name: Enable UFW when selected
       ansible.builtin.command:
         cmd: "ufw --force enable"
-      when: "'ufw' in (modules_selected | default([]))"
+      when: "'ufw' in (modules_selected | default([], true))"
 
     - name: Reboot after network backend switch
       ansible.builtin.reboot:
@@ -374,16 +385,16 @@
         reboot_timeout: 600
         pre_reboot_delay: 0
         post_reboot_delay: 5
-      when: "'network_ifupdown' in (modules_selected | default([]))"
+      when: "'network_ifupdown' in (modules_selected | default([], true))"
 
     - name: Run selected app roles
       ansible.builtin.include_role:
         name: "apps/{{ item }}"
-      loop: "{{ apps_selected | default([]) }}"
+      loop: "{{ apps_selected | default([], true) }}"
 
     - name: Ensure fail2ban service is enabled and running
       ansible.builtin.service:
         name: fail2ban
         state: started
         enabled: true
-      when: "'fail2ban' in (modules_selected | default([]))"
+      when: "'fail2ban' in (modules_selected | default([], true))"
