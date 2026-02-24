@@ -62,12 +62,14 @@ run_ansible() {
   local key_path="$6"
   local password="$7"
   local selected_modules_csv="$8"
-  local selected_apps_csv="$9"
-  local ufw_open_app_ports="${10}"
-  local ip_mode="${11}"
-  local ip_cidr="${12}"
-  local gateway="${13}"
-  local dns_server="${14}"
+  local selected_baseline_packages_csv="$9"
+  local selected_fail2ban_jails_csv="${10}"
+  local selected_apps_csv="${11}"
+  local ufw_open_app_ports="${12}"
+  local ip_mode="${13}"
+  local ip_cidr="${14}"
+  local gateway="${15}"
+  local dns_server="${16}"
 
   local work_dir
   work_dir="$(mktemp -d /tmp/proxmox-orchestrator-ansible-XXXX)"
@@ -106,6 +108,24 @@ EOT
       IFS=',' read -r -a apps_array <<<"$selected_apps_csv"
       for app in "${apps_array[@]}"; do
         [[ -n "$app" ]] && printf '  - %s\n' "$app"
+      done
+    fi
+
+    echo "baseline_packages_selected:"
+    if [[ -n "$selected_baseline_packages_csv" ]]; then
+      local baseline_pkg
+      IFS=',' read -r -a baseline_packages_array <<<"$selected_baseline_packages_csv"
+      for baseline_pkg in "${baseline_packages_array[@]}"; do
+        [[ -n "$baseline_pkg" ]] && printf '  - %s\n' "$baseline_pkg"
+      done
+    fi
+
+    echo "fail2ban_jails_selected:"
+    if [[ -n "$selected_fail2ban_jails_csv" ]]; then
+      local jail
+      IFS=',' read -r -a fail2ban_jails_array <<<"$selected_fail2ban_jails_csv"
+      for jail in "${fail2ban_jails_array[@]}"; do
+        [[ -n "$jail" ]] && printf '  - %s\n' "$jail"
       done
     fi
 

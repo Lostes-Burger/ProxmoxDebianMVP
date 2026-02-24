@@ -22,9 +22,45 @@
         fail_msg: "Unbekannte App ausgewählt: {{ item }}"
       loop: "{{ apps_selected | default([]) }}"
 
+    - name: Validate selected baseline packages
+      ansible.builtin.assert:
+        that:
+          - item in ['htop', 'vim', 'curl', 'ncdu', 'git', 'jq', 'tmux', 'wget', 'less', 'ca-certificates']
+        fail_msg: "Unbekanntes Baseline-Paket ausgewählt: {{ item }}"
+      loop: "{{ baseline_packages_selected | default([]) }}"
+
+    - name: Validate selected fail2ban profiles
+      ansible.builtin.assert:
+        that:
+          - item in ['sshd', 'recidive', 'nginx-http-auth', 'nginx-botsearch']
+        fail_msg: "Unbekanntes fail2ban-Profil ausgewählt: {{ item }}"
+      loop: "{{ fail2ban_jails_selected | default([]) }}"
+
     - name: Show selected apps
       ansible.builtin.debug:
         msg: "Ausgewählte Apps: {{ apps_selected | default([]) | join(', ') if (apps_selected | default([]) | length > 0) else 'keine' }}"
+
+    - name: Show selected baseline packages
+      ansible.builtin.debug:
+        msg: "Ausgewählte Baseline-Pakete: {{ baseline_packages_selected | default([]) | join(', ') if (baseline_packages_selected | default([]) | length > 0) else 'keine' }}"
+
+    - name: Show selected fail2ban profiles
+      ansible.builtin.debug:
+        msg: "Ausgewählte fail2ban-Profile: {{ fail2ban_jails_selected | default([]) | join(', ') if (fail2ban_jails_selected | default([]) | length > 0) else 'keine' }}"
+
+    - name: Ensure baseline package selection exists when module is enabled
+      ansible.builtin.assert:
+        that:
+          - (baseline_packages_selected | default([]) | length) > 0
+        fail_msg: "Modul baseline_tools ist aktiv, aber es wurden keine Pakete ausgewählt."
+      when: "'baseline_tools' in (modules_selected | default([]))"
+
+    - name: Install selected baseline packages
+      ansible.builtin.apt:
+        name: "{{ baseline_packages_selected }}"
+        state: present
+        update_cache: true
+      when: "'baseline_tools' in (modules_selected | default([]))"
 
     - name: Install unattended-upgrades packages when selected
       ansible.builtin.apt:
@@ -123,6 +159,57 @@
         - "'sysctl_hardening' in (modules_selected | default([]))"
         - sysctl_hardening_conf.changed
 
+    - name: Ensure fail2ban profile selection exists when module is enabled
+      ansible.builtin.assert:
+        that:
+          - (fail2ban_jails_selected | default([]) | length) > 0
+        fail_msg: "Modul fail2ban ist aktiv, aber es wurden keine Schutzprofile ausgewählt."
+      when: "'fail2ban' in (modules_selected | default([]))"
+
+    - name: Install fail2ban when selected
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+        update_cache: true
+      when: "'fail2ban' in (modules_selected | default([]))"
+
+    - name: Write fail2ban jail configuration
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.d/orchestrator.local
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [DEFAULT]
+          bantime = 1h
+          findtime = 10m
+          maxretry = 5
+          backend = systemd
+
+          {% for jail in fail2ban_jails_selected | default([]) %}
+          [{{ jail }}]
+          enabled = true
+          {% if jail == 'sshd' %}
+          port = ssh
+          logpath = %(sshd_log)s
+          maxretry = 5
+          {% elif jail == 'recidive' %}
+          logpath = /var/log/fail2ban.log
+          bantime = 1d
+          findtime = 1d
+          maxretry = 3
+          {% elif jail == 'nginx-http-auth' %}
+          port = http,https
+          logpath = /var/log/nginx/error.log
+          {% elif jail == 'nginx-botsearch' %}
+          port = http,https
+          logpath = /var/log/nginx/access.log
+          maxretry = 2
+          {% endif %}
+
+          {% endfor %}
+      when: "'fail2ban' in (modules_selected | default([]))"
+
     - name: Ensure static network values are present for ifupdown module
       ansible.builtin.assert:
         that:
@@ -204,7 +291,6 @@
       ansible.builtin.service:
         name: systemd-networkd
         enabled: false
-        state: stopped
       when:
         - "'network_ifupdown' in (modules_selected | default([]))"
         - "'systemd-networkd.service' in ansible_facts.services"
@@ -294,3 +380,10 @@
       ansible.builtin.include_role:
         name: "apps/{{ item }}"
       loop: "{{ apps_selected | default([]) }}"
+
+    - name: Ensure fail2ban service is enabled and running
+      ansible.builtin.service:
+        name: fail2ban
+        state: started
+        enabled: true
+      when: "'fail2ban' in (modules_selected | default([]))"

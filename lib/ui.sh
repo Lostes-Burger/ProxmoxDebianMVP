@@ -313,6 +313,44 @@ choose_apps() {
   echo "$selection"
 }
 
+choose_baseline_packages() {
+  local selection
+  if ! selection=$(whiptail --title "Baseline Tools" --checklist "Wähle Baseline-Pakete (alles vorausgewählt)" 22 95 12 \
+    "htop" "Interaktiver Prozessmonitor" ON \
+    "vim" "Texteditor" ON \
+    "curl" "HTTP-Client" ON \
+    "ncdu" "Disk Usage Analyzer (TUI)" ON \
+    "git" "Versionsverwaltung" ON \
+    "jq" "JSON CLI Parser" ON \
+    "tmux" "Terminal Multiplexer" ON \
+    "wget" "Dateidownload per CLI" ON \
+    "less" "Pager" ON \
+    "ca-certificates" "CA Zertifikate" ON \
+    3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  selection="${selection//\"/}"
+  selection="${selection// /,}"
+  echo "$selection"
+}
+
+choose_fail2ban_jails() {
+  local selection
+  if ! selection=$(whiptail --title "Fail2ban Schutzprofile" --checklist "Wähle Schutzprofile für fail2ban" 20 95 10 \
+    "sshd" "Schutz für SSH Login-Versuche" ON \
+    "recidive" "Sperrt Wiederholungstäter länger" ON \
+    "nginx-http-auth" "Schutz für Nginx HTTP Auth Brute Force" OFF \
+    "nginx-botsearch" "Blockiert aggressive Bot-Scans auf Nginx" OFF \
+    3>&1 1>&2 2>&3); then
+    die "Vom Benutzer abgebrochen."
+  fi
+
+  selection="${selection//\"/}"
+  selection="${selection// /,}"
+  echo "$selection"
+}
+
 collect_wizard_config() {
   local output_file="$1"
 
@@ -448,6 +486,18 @@ collect_wizard_config() {
   local modules
   modules="$(choose_modules)"
 
+  local baseline_packages=""
+  if [[ ",${modules}," == *,baseline_tools,* ]]; then
+    baseline_packages="$(choose_baseline_packages)"
+    [[ -n "$baseline_packages" ]] || die "Mindestens ein Baseline-Paket muss ausgewählt sein."
+  fi
+
+  local fail2ban_jails=""
+  if [[ ",${modules}," == *,fail2ban,* ]]; then
+    fail2ban_jails="$(choose_fail2ban_jails)"
+    [[ -n "$fail2ban_jails" ]] || die "Mindestens ein fail2ban-Schutzprofil muss ausgewählt sein."
+  fi
+
   local apps
   apps="$(choose_apps)"
 
@@ -482,6 +532,8 @@ User: $ci_user
 Ansible Auth: $ansible_auth_mode
 Root Auth: $root_auth_mode
 Module: ${modules:-keine}
+Baseline Pakete: ${baseline_packages:-keine}
+Fail2ban Profile: ${fail2ban_jails:-keine}
 Apps: ${apps:-keine}
 UFW App-Ports freigeben: ${ufw_open_app_ports}
 EOT
@@ -517,6 +569,8 @@ EOT
     printf 'ROOT_PASSWORD=%q\n' "$root_password"
     printf 'SSH_PORT=%q\n' "$ssh_port"
     printf 'SELECTED_MODULES=%q\n' "$modules"
+    printf 'SELECTED_BASELINE_PACKAGES=%q\n' "$baseline_packages"
+    printf 'SELECTED_FAIL2BAN_JAILS=%q\n' "$fail2ban_jails"
     printf 'SELECTED_APPS=%q\n' "$apps"
     printf 'UFW_OPEN_APP_PORTS=%q\n' "$ufw_open_app_ports"
   } >"$output_file"
