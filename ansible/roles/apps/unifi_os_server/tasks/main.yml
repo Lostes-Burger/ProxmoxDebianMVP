@@ -8,9 +8,12 @@
     update_cache: true
 
 - name: Download UniFi OS Server community installer script
-  ansible.builtin.get_url:
-    url: "https://raw.githubusercontent.com/dgodibadze/UniFi_OS_Server/main/install_uosserver.sh"
-    dest: "/tmp/install_uosserver.sh"
+  ansible.builtin.command:
+    cmd: "curl -fsSL https://raw.githubusercontent.com/dgodibadze/UniFi_OS_Server/main/install_uosserver.sh -o /tmp/install_uosserver.sh"
+
+- name: Set execute permission on UniFi OS Server installer script
+  ansible.builtin.file:
+    path: "/tmp/install_uosserver.sh"
     mode: "0755"
 
 - name: Run UniFi OS Server community installer script
