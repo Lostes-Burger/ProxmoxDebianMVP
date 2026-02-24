@@ -78,6 +78,22 @@
     executable: /bin/bash
   register: uos_binary_run
   changed_when: true
+  failed_when: >-
+    (
+      uos_binary_run.rc | int != 0
+      and not (
+        (uos_binary_run.rc | int == 141)
+        and
+        (
+          (
+            (uos_binary_run.stdout | default(''))
+            ~ '\n'
+            ~ (uos_binary_run.stderr | default(''))
+          )
+          is search('INSTALLATION COMPLETE|UOS Server is running at:')
+        )
+      )
+    )
   when: uos_needs_compat_fallback
 
 - name: Ensure UniFi OS Server service is running (if present)
