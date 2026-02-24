@@ -11,7 +11,7 @@
     - name: Validate selected apps
       ansible.builtin.assert:
         that:
-          - item in ['docker', 'nginx']
+          - item in ['docker', 'nginx', 'unifi_os_server']
         fail_msg: "Unbekannte App ausgewählt: {{ item }}"
       loop: "{{ apps_selected | default([]) }}"
 

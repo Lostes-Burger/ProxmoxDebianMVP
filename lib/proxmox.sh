@@ -69,8 +69,6 @@ create_vm() {
     --cores "$vm_cores" \
     --net0 "$net0" \
     --scsihw virtio-scsi-pci \
-    --serial0 socket \
-    --vga serial0 \
     --agent enabled=1 >/dev/null
 
   qm importdisk "$vmid" "$image_path" "$vm_storage" >/dev/null

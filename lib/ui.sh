@@ -302,6 +302,7 @@ choose_apps() {
   if ! selection=$(whiptail --title "Apps" --checklist "Wähle Apps (leer möglich)" 15 75 5 \
     "docker" "Docker Engine + Compose Plugin" OFF \
     "nginx" "Nginx Webserver" OFF \
+    "unifi_os_server" "UniFi OS Server (latest)" OFF \
     3>&1 1>&2 2>&3); then
     die "Vom Benutzer abgebrochen."
   fi
@@ -364,6 +365,39 @@ collect_wizard_config() {
   local ci_user
   ci_user="$(whiptail --inputbox "Cloud-Init Benutzer" 10 60 "debian" 3>&1 1>&2 2>&3)"
 
+  local root_auth_mode
+  root_auth_mode="$(whiptail --title "Root Login" --radiolist "Root-Authentifizierung auswählen" 16 80 3 \
+    "key_path" "SSH Key aus Datei-Pfad" ON \
+    "key_manual" "SSH Key manuell einfügen" OFF \
+    "password" "Passwort" OFF \
+    3>&1 1>&2 2>&3)"
+
+  local root_ssh_key_path=""
+  local root_ssh_key_text=""
+  local root_password=""
+
+  case "$root_auth_mode" in
+    key_path)
+      root_ssh_key_path="$(whiptail --inputbox "Pfad zum Root Public Key" 10 80 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
+      [[ -s "$root_ssh_key_path" ]] || die "Root Public Key nicht gefunden oder leer: $root_ssh_key_path"
+      ;;
+    key_manual)
+      root_ssh_key_text="$(whiptail --inputbox "Root Public Key einfügen (eine Zeile, beginnt mit ssh-...)" 14 100 "" 3>&1 1>&2 2>&3)"
+      [[ "$root_ssh_key_text" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger manueller SSH Key für root."
+      ;;
+    password)
+      local root_pass1 root_pass2
+      root_pass1="$(whiptail --passwordbox "Root Passwort setzen" 10 70 3>&1 1>&2 2>&3)"
+      root_pass2="$(whiptail --passwordbox "Root Passwort bestätigen" 10 70 3>&1 1>&2 2>&3)"
+      [[ -n "$root_pass1" ]] || die "Root Passwort darf nicht leer sein."
+      [[ "$root_pass1" == "$root_pass2" ]] || die "Root Passwörter stimmen nicht überein."
+      root_password="$root_pass1"
+      ;;
+    *)
+      die "Ungültige Root Auth Auswahl: $root_auth_mode"
+      ;;
+  esac
+
   local ssh_pub
   ssh_pub="$(whiptail --inputbox "Pfad zum Public Key (leer = Passwortmodus)" 11 80 "$HOME/.ssh/id_rsa.pub" 3>&1 1>&2 2>&3)"
 
@@ -414,6 +448,7 @@ Bridge: $vm_bridge
 VLAN: ${vlan_tag:-untagged}
 IP-Modus: $ip_mode
 User: $ci_user
+Root Auth: $root_auth_mode
 SSH Key: $ssh_pub
 SSH Auth: $ssh_auth_mode
 Module: ${modules:-keine}
@@ -440,6 +475,10 @@ EOT
     printf 'GATEWAY=%q\n' "$gateway"
     printf 'DNS_SERVER=%q\n' "$dns_server"
     printf 'CI_USER=%q\n' "$ci_user"
+    printf 'ROOT_AUTH_MODE=%q\n' "$root_auth_mode"
+    printf 'ROOT_SSH_KEY_PATH=%q\n' "$root_ssh_key_path"
+    printf 'ROOT_SSH_KEY_TEXT=%q\n' "$root_ssh_key_text"
+    printf 'ROOT_PASSWORD=%q\n' "$root_password"
     printf 'SSH_AUTH_MODE=%q\n' "$ssh_auth_mode"
     printf 'SSH_PUBKEY_PATH=%q\n' "$ssh_pub"
     printf 'SSH_PRIVATE_KEY_PATH=%q\n' "$ssh_priv"

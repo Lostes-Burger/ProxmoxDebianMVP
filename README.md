@@ -27,8 +27,11 @@ chmod +x orchestrator.sh
   - Key-Modus mit `Public/Private Key`
   - Passwort-Modus, wenn der Public-Key-Pfad leer ist oder die Public-Key-Datei leer ist
   - Login erfolgt mit dem gewählten Cloud-Init-Benutzer (z. B. `debian`), nicht mit `root`
+- Root-Login:
+  - Auswahl: `SSH Key Path` / `manueller SSH Key` / `Passwort`
+  - Root-Zugang wird direkt via Cloud-Init konfiguriert
 - Optionale Module (auch leer möglich)
-- Optionale Apps `docker` und `nginx` (auch leer möglich)
+- Optionale Apps `docker`, `nginx`, `unifi_os_server` (auch leer möglich)
 - `qemu-guest-agent` wird immer installiert (nicht mehr als optionales Modul)
 
 ## Benötigte Dateien im Repo
@@ -61,4 +64,6 @@ Wenn installierbare Pakete fehlen, fragt der Wizard, ob sie automatisch installi
 - Der SSH-Wait prüft den echten Login mit dem gewählten Cloud-Init-Benutzer (nicht `root`).
 - Bei DHCP wird die IP automatisch über `qemu-guest-agent` ermittelt (kein manueller IP-Prompt mehr).
 - VM-Disk und Cloud-Init-Snippets können auf unterschiedlichen Storages liegen (z. B. VM auf `bigdata`, Snippets auf `local`).
+- Neue VMs werden ohne erzwungenen Serial-Display-Modus erstellt.
+- `unifi_os_server` zieht bei Auswahl die aktuelle Linux-x64-`.deb` von `ui.com/download/releases/unifi-os-server`.
 - Logs liegen unter `/var/log/proxmox-orchestrator.log` (Fallback: `/tmp/proxmox-orchestrator.log`).

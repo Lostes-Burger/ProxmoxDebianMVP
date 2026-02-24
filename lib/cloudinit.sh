@@ -38,6 +38,10 @@ configure_cloud_init_userdata() {
   local ci_user="$4"
   local ssh_pubkey_path="$5"
   local ci_password="$6"
+  local root_auth_mode="$7"
+  local root_ssh_key_path="$8"
+  local root_ssh_key_text="$9"
+  local root_password="${10}"
 
   [[ -n "$snippets_storage" ]] || die "Kein Storage mit 'snippets' Content gefunden. Bitte auf einem Storage 'snippets' aktivieren."
   if ! storage_has_content_type "$snippets_storage" "snippets"; then
@@ -50,7 +54,56 @@ configure_cloud_init_userdata() {
   [[ -n "$snippet_path" ]] || die "Snippet-Pfad konnte nicht aufgelöst werden: $snippet_volid"
 
   local user_block=""
+  local root_block=""
   local auth_block=""
+  local root_ssh_cfg=""
+  local ci_ssh_pwauth="false"
+
+  if [[ "$ssh_auth_mode" == "password" ]]; then
+    ci_ssh_pwauth="true"
+  fi
+
+  local root_key=""
+  case "$root_auth_mode" in
+    key_path)
+      [[ -s "$root_ssh_key_path" ]] || die "Root Public Key nicht gefunden oder leer: $root_ssh_key_path"
+      root_key="$(tr -d '\r\n' <"$root_ssh_key_path")"
+      [[ "$root_key" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger Root Public Key in Datei."
+      root_block=$(cat <<EOT
+  - name: root
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${root_key}
+EOT
+)
+      root_ssh_cfg="PermitRootLogin prohibit-password"
+      ;;
+    key_manual)
+      root_key="$(printf '%s' "$root_ssh_key_text" | tr -d '\r\n')"
+      [[ "$root_key" =~ ^ssh-(rsa|ed25519|ecdsa) ]] || die "Ungültiger manueller Root Public Key."
+      root_block=$(cat <<EOT
+  - name: root
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ${root_key}
+EOT
+)
+      root_ssh_cfg="PermitRootLogin prohibit-password"
+      ;;
+    password)
+      [[ -n "$root_password" ]] || die "Root Passwortmodus aktiv, aber kein Root Passwort gesetzt."
+      root_block=$(cat <<EOT
+  - name: root
+    lock_passwd: false
+EOT
+)
+      root_ssh_cfg="PermitRootLogin yes"
+      ci_ssh_pwauth="true"
+      ;;
+    *)
+      die "Ungültige Root Auth Auswahl: $root_auth_mode"
+      ;;
+  esac
   if [[ "$ssh_auth_mode" == "key" ]]; then
     [[ -s "$ssh_pubkey_path" ]] || die "Public Key nicht gefunden oder leer: $ssh_pubkey_path"
     local ssh_key
@@ -58,7 +111,6 @@ configure_cloud_init_userdata() {
     [[ -n "$ssh_key" ]] || die "Public Key ist leer: $ssh_pubkey_path"
 
     user_block=$(cat <<EOT
-users:
   - name: ${ci_user}
     shell: /bin/bash
     groups: sudo
@@ -68,23 +120,32 @@ users:
       - ${ssh_key}
 EOT
 )
-    auth_block="ssh_pwauth: false"
   else
     [[ -n "$ci_password" ]] || die "Passwortmodus aktiv, aber kein Passwort gesetzt."
     user_block=$(cat <<EOT
-users:
   - name: ${ci_user}
     shell: /bin/bash
     groups: sudo
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: false
-chpasswd:
-  list: |
-    ${ci_user}:${ci_password}
-  expire: false
 EOT
 )
+  fi
+
+  local chpasswd_block=""
+  if [[ "$ssh_auth_mode" == "password" ]]; then
+    chpasswd_block+="${ci_user}:${ci_password}"$'\n'
+  fi
+  if [[ "$root_auth_mode" == "password" ]]; then
+    chpasswd_block+="root:${root_password}"$'\n'
+  fi
+
+  if [[ "$ci_ssh_pwauth" == "true" ]]; then
     auth_block="ssh_pwauth: true"
+    local ssh_password_auth_value="yes"
+  else
+    auth_block="ssh_pwauth: false"
+    local ssh_password_auth_value="no"
   fi
 
   mkdir -p "$(dirname "$snippet_path")"
@@ -92,12 +153,30 @@ EOT
 #cloud-config
 package_update: true
 ${auth_block}
+disable_root: false
 packages:
   - python3
   - python3-apt
   - qemu-guest-agent
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-root-access.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      ${root_ssh_cfg}
+      PasswordAuthentication ${ssh_password_auth_value}
+users:
+${root_block}
 ${user_block}
+$(if [[ -n "$chpasswd_block" ]]; then cat <<EOF
+chpasswd:
+  list: |
+$(printf '%s' "$chpasswd_block" | sed 's/^/    /')
+  expire: false
+EOF
+fi)
 runcmd:
+  - systemctl restart ssh || systemctl restart sshd || true
   - systemctl enable --now qemu-guest-agent
 EOT
 
@@ -113,10 +192,14 @@ configure_cloud_init() {
   local ssh_auth_mode="$5"
   local ssh_pubkey_path="$6"
   local ci_password="$7"
-  local ip_mode="$8"
-  local ip_cidr="$9"
-  local gateway="${10}"
-  local dns_server="${11}"
+  local root_auth_mode="$8"
+  local root_ssh_key_path="$9"
+  local root_ssh_key_text="${10}"
+  local root_password="${11}"
+  local ip_mode="${12}"
+  local ip_cidr="${13}"
+  local gateway="${14}"
+  local dns_server="${15}"
 
   local ipconfig="ip=dhcp"
   if [[ "$ip_mode" == "static" ]]; then
@@ -124,7 +207,7 @@ configure_cloud_init() {
   fi
 
   qm set "$vmid" --ipconfig0 "$ipconfig" >/dev/null
-  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode" "$ci_user" "$ssh_pubkey_path" "$ci_password"
+  configure_cloud_init_userdata "$vmid" "$snippets_storage" "$ssh_auth_mode" "$ci_user" "$ssh_pubkey_path" "$ci_password" "$root_auth_mode" "$root_ssh_key_path" "$root_ssh_key_text" "$root_password"
 
   if [[ -n "$dns_server" ]]; then
     qm set "$vmid" --nameserver "$dns_server" >/dev/null
