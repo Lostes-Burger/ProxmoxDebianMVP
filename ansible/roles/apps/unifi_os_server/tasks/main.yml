@@ -66,6 +66,40 @@
         | join('\n')
       }}
 
+- name: Define UniFi OS Server fallback source URLs
+  ansible.builtin.set_fact:
+    uos_fallback_source_urls:
+      - "https://fw-download.ubnt.com/data/unifi-os-server/"
+      - "https://dl.ui.com/"
+      - "https://www.ui.com/download/releases/unifi-os-server"
+      - "https://www.ui.com/downloads/unifi-os-server"
+      - "https://www.ui.com/downloads"
+
+- name: Fetch UniFi OS Server fallback sources
+  ansible.builtin.command:
+    cmd: "curl -fsSL {{ item | quote }}"
+  loop: "{{ uos_fallback_source_urls }}"
+  register: uos_fallback_sources
+  changed_when: false
+  failed_when: false
+
+- name: Append fallback source content
+  ansible.builtin.set_fact:
+    uos_release_content_combined: >-
+      {{
+        (
+          [uos_release_content_combined]
+          +
+          (
+            (uos_fallback_sources.results | default([]))
+            | selectattr('rc', 'equalto', 0)
+            | map(attribute='stdout')
+            | list
+          )
+        )
+        | join('\n')
+      }}
+
 - name: Extract UniFi OS Server deb URL candidates
   ansible.builtin.set_fact:
     uos_download_candidates: >-
@@ -163,6 +197,7 @@
       Konnte keine UniFi OS Server Linux-x64 .deb URL auf ui.com finden.
       Gepruefte Metadata-URLs: {{ uos_metadata_url_candidates | length }}.
       Gefundene .deb-Kandidaten: {{ uos_download_candidates | length }}.
+      Optional: setze uos_download_url_override auf eine direkte .deb URL.
 
 - name: Set local paths for UniFi OS Server package
   ansible.builtin.set_fact:
