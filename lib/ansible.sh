@@ -13,9 +13,19 @@ bootstrap_vm() {
   log_info "Bootstrappe VM (python3 + qemu-guest-agent)"
 
   local remote_cmd
-  remote_cmd="if command -v sudo >/dev/null 2>&1; then SUDO='sudo'; else SUDO=''; fi; \
-\$SUDO apt-get update -y; \
-\$SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-apt qemu-guest-agent; \
+  remote_cmd="set -e; \
+if command -v sudo >/dev/null 2>&1; then SUDO='sudo'; else SUDO=''; fi; \
+if command -v cloud-init >/dev/null 2>&1; then \$SUDO cloud-init status --wait || true; fi; \
+apt_try=1; apt_max=30; \
+while ! \$SUDO apt-get update -y; do \
+  if [ \"\$apt_try\" -ge \"\$apt_max\" ]; then exit 1; fi; \
+  sleep 3; apt_try=\$((apt_try + 1)); \
+done; \
+apt_try=1; \
+while ! \$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-apt qemu-guest-agent; do \
+  if [ \"\$apt_try\" -ge \"\$apt_max\" ]; then exit 1; fi; \
+  sleep 3; apt_try=\$((apt_try + 1)); \
+done; \
 \$SUDO systemctl enable --now qemu-guest-agent; \
 \$SUDO systemctl is-active --quiet qemu-guest-agent"
 
